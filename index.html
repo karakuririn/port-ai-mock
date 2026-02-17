@@ -3,19 +3,12 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-    <title>港湾AI自動検査システム 日本語版</title>
+    <title>港湾AI自動検査システム v6</title>
     <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/coco-ssd"></script>
     <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs"></script>
     <script src="https://cdn.tailwindcss.com"></script>
     <style>
-        .scanner-line {
-            position: absolute;
-            width: 100%; height: 4px;
-            background: #eab308;
-            box-shadow: 0 0 15px #eab308;
-            animation: scan 1.5s linear infinite;
-            top: 0; opacity: 0;
-        }
+        .scanner-line { position: absolute; width: 100%; height: 4px; background: #eab308; box-shadow: 0 0 15px #eab308; animation: scan 1.5s linear infinite; top: 0; opacity: 0; }
         @keyframes scan { 0% { top: 0; opacity: 0; } 20% { opacity: 1; } 80% { opacity: 1; } 100% { top: 100%; opacity: 0; } }
         .flash-effect { animation: flash 0.1s ease-out; }
         @keyframes flash { from { background: white; opacity: 0.8; } to { background: transparent; opacity: 0; } }
@@ -25,7 +18,6 @@
 <body class="bg-gray-900 h-screen flex flex-col overflow-hidden font-sans select-none">
 
     <div id="top-panel" class="h-[30%] bg-white flex flex-col relative z-20 shadow-lg transition-colors duration-500">
-        
         <div class="absolute top-2 left-3 flex gap-2 z-30">
             <div id="ble-badge" class="px-2 py-0.5 rounded text-[10px] font-bold border flex items-center gap-1 bg-white/90 text-blue-600 border-blue-200 transition-all">
                 <span class="w-1.5 h-1.5 rounded-full bg-blue-500 animate-pulse"></span> BLE接続：確立済み
@@ -37,9 +29,7 @@
                 <h1 id="main-status" class="text-2xl font-black text-gray-800 tracking-tight">信号待機中</h1>
                 <p id="sub-status" class="text-xs text-gray-400 font-bold mt-1">マキシブレーキを解除してください (J1939)</p>
             </div>
-
             <button id="btn-trigger" class="mt-4 bg-slate-800 hover:bg-slate-700 text-white text-sm font-bold py-3 px-8 rounded-full shadow-lg active:scale-95 transition-transform flex items-center gap-2">
-                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"></path></svg>
                 CAN信号受信開始
             </button>
         </div>
@@ -49,7 +39,7 @@
                 <span id="res-icon" class="text-5xl bg-white/20 rounded-full p-2">✅</span>
                 <div class="text-left">
                     <div id="res-title" class="text-5xl font-black text-white tracking-tighter leading-none">OK</div>
-                    <div id="res-desc" class="text-xs text-white/80 font-bold uppercase tracking-widest mt-1">正常：検査を完了しました</div>
+                    <div id="res-desc" class="text-xs text-white/80 font-bold uppercase tracking-widest mt-1">正常</div>
                 </div>
             </div>
             <button id="btn-confirm" class="mt-4 bg-white text-gray-900 font-black py-2 px-10 rounded-full shadow-lg active:scale-95 transition-transform text-sm border-b-4 border-gray-300 active:border-b-0 active:translate-y-0.5">
@@ -61,22 +51,15 @@
     <div class="h-[70%] relative bg-black overflow-hidden">
         <video id="webcam" class="absolute inset-0 w-full h-full object-cover opacity-80" autoplay playsinline muted></video>
         <canvas id="overlay" class="absolute inset-0 w-full h-full object-cover"></canvas>
-        
         <div id="scan-bar" class="scanner-line"></div>
         <div id="shutter-overlay" class="absolute inset-0 pointer-events-none"></div>
-
-        <div class="absolute inset-0 flex items-center justify-center opacity-30 pointer-events-none">
-            <div class="w-20 h-20 border-2 border-white/50 rounded-xl"></div>
-            <div class="absolute w-1 h-6 bg-white/50"></div>
-            <div class="absolute w-6 h-1 bg-white/50"></div>
-        </div>
-
         <div id="photo-container" class="absolute bottom-0 left-0 right-0 h-24 bg-gradient-to-t from-black/90 to-transparent p-2 pb-safe flex gap-2 overflow-x-auto items-end opacity-50 transition-opacity duration-300">
             <div class="text-[9px] text-gray-500 font-bold w-full text-center mb-2">自動連写された画像がここに表示されます</div>
         </div>
     </div>
 
     <script>
+        // --- 要素取得と変数 ---
         const topPanel = document.getElementById('top-panel');
         const viewProcess = document.getElementById('view-process');
         const viewResult = document.getElementById('view-result');
@@ -94,9 +77,33 @@
         const shutterOverlay = document.getElementById('shutter-overlay');
         const photoContainer = document.getElementById('photo-container');
 
-        let model;
-        let isModeActive = false;
-        let isCapturing = false;
+        let model, isModeActive = false, isCapturing = false;
+        let audioCtx; // 音声コンテキスト
+
+        // --- 音を鳴らす関数 ---
+        function playFeedbackSound(type) {
+            if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+            const oscillator = audioCtx.createOscillator();
+            const gainNode = audioCtx.createGain();
+            oscillator.connect(gainNode);
+            gainNode.connect(audioCtx.destination);
+
+            if (type === 'OK') {
+                oscillator.type = 'sine';
+                oscillator.frequency.setValueAtTime(880, audioCtx.currentTime); // 高い音
+                gainNode.gain.setValueAtTime(0.1, audioCtx.currentTime);
+                oscillator.start();
+                oscillator.stop(audioCtx.currentTime + 0.2);
+            } else if (type === 'NG') {
+                oscillator.type = 'sawtooth';
+                oscillator.frequency.setValueAtTime(220, audioCtx.currentTime); // 低い警告音
+                gainNode.gain.setValueAtTime(0.1, audioCtx.currentTime);
+                oscillator.start();
+                oscillator.stop(audioCtx.currentTime + 0.5);
+                // NG時はバイブレーション (Androidのみ)
+                if (navigator.vibrate) navigator.vibrate([200, 100, 200, 100, 500]);
+            }
+        }
 
         async function init() {
             mainStatus.innerText = "AI起動中...";
@@ -116,6 +123,7 @@
         }
 
         btnTrigger.addEventListener('click', () => {
+            if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)(); // 音声を有効化
             isModeActive = true;
             btnTrigger.style.display = 'none';
             mainStatus.innerText = "作業確認中";
@@ -148,7 +156,6 @@
             isCapturing = true;
             mainStatus.innerText = "連写撮影中...";
             mainStatus.className = "text-3xl font-black text-red-500 tracking-tight";
-            subStatus.innerText = "10枚の画像を解析用に取得しています";
             scanBar.style.animationDuration = "0.1s";
             for (let i = 0; i < 10; i++) {
                 shutterOverlay.classList.remove('flash-effect');
@@ -159,8 +166,6 @@
             }
             mainStatus.innerText = "AI判定中...";
             mainStatus.className = "text-3xl font-black text-gray-800 tracking-tight";
-            subStatus.innerText = "クラウド連携・画像判定を実行中";
-            scanBar.style.opacity = "0";
             setTimeout(showResult, 1200);
         }
 
@@ -180,18 +185,17 @@
             viewResult.classList.remove('hidden');
             const isOk = Math.random() > 0.3;
             if (isOk) {
+                playFeedbackSound('OK');
                 topPanel.className = "h-[30%] bg-green-500 flex flex-col relative z-20 shadow-lg transition-colors duration-500";
                 resTitle.innerText = "OK";
                 resIcon.innerText = "✅";
-                resDesc.innerText = "正常";
-                btnConfirm.className = "mt-4 bg-white text-green-700 font-black py-2 px-10 rounded-full shadow-lg active:scale-95 transition-transform text-sm border-b-4 border-green-800 active:border-b-0 active:translate-y-0.5";
+                resDesc.innerText = "状態正常";
             } else {
+                playFeedbackSound('NG');
                 topPanel.className = "h-[30%] bg-yellow-400 flex flex-col relative z-20 shadow-lg transition-colors duration-500 text-gray-900";
                 resTitle.innerText = "NG";
                 resIcon.innerText = "⚠️";
                 resDesc.innerText = "異常あり：再確認してください";
-                resDesc.classList.replace('text-white/80', 'text-gray-800/80');
-                btnConfirm.className = "mt-4 bg-gray-900 text-yellow-400 font-black py-2 px-10 rounded-full shadow-lg active:scale-95 transition-transform text-sm border-b-4 border-black active:border-b-0 active:translate-y-0.5";
             }
         }
 
@@ -203,12 +207,10 @@
             bleBadge.innerHTML = '<span class="w-1.5 h-1.5 rounded-full bg-blue-500 animate-pulse"></span> BLE接続：確立済み';
             mainStatus.innerText = "信号待機中";
             mainStatus.className = "text-2xl font-black text-gray-800 tracking-tight";
-            subStatus.innerText = "マキシブレーキ信号(J1939)の受信を待っています";
             btnTrigger.style.display = 'flex';
             video.classList.add('opacity-80');
             photoContainer.classList.add('opacity-50');
             photoContainer.innerHTML = '<div class="text-[9px] text-gray-500 font-bold w-full text-center mb-2">自動連写された画像がここに表示されます</div>';
-            resDesc.classList.replace('text-gray-800/80', 'text-white/80');
         });
 
         init();
