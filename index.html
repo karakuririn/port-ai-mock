@@ -3,9 +3,9 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-    <title>港湾AI自動検査システム v6</title>
-    <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/coco-ssd"></script>
+    <title>港湾AI自動検査システム v6_Fixed</title>
     <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/coco-ssd"></script>
     <script src="https://cdn.tailwindcss.com"></script>
     <style>
         .scanner-line { position: absolute; width: 100%; height: 4px; background: #eab308; box-shadow: 0 0 15px #eab308; animation: scan 1.5s linear infinite; top: 0; opacity: 0; }
@@ -26,20 +26,20 @@
 
         <div id="view-process" class="flex-1 flex flex-col items-center justify-center p-4">
             <div class="text-center mt-4">
-                <h1 id="main-status" class="text-2xl font-black text-gray-800 tracking-tight">信号待機中</h1>
-                <p id="sub-status" class="text-xs text-gray-400 font-bold mt-1">マキシブレーキを解除してください (J1939)</p>
+                <h1 id="main-status" class="text-2xl font-black text-gray-800 tracking-tight">AI準備中...</h1>
+                <p id="sub-status" class="text-xs text-gray-400 font-bold mt-1">カメラと解析モデルを起動しています</p>
             </div>
-            <button id="btn-trigger" class="mt-4 bg-slate-800 hover:bg-slate-700 text-white text-sm font-bold py-3 px-8 rounded-full shadow-lg active:scale-95 transition-transform flex items-center gap-2">
+            <button id="btn-trigger" class="hidden mt-4 bg-slate-800 hover:bg-slate-700 text-white text-sm font-bold py-3 px-8 rounded-full shadow-lg active:scale-95 transition-transform flex items-center gap-2">
                 CAN信号受信開始
             </button>
         </div>
 
-        <div id="view-result" class="hidden absolute inset-0 flex flex-col items-center justify-center p-2 animate-fade-in">
+        <div id="view-result" class="hidden absolute inset-0 flex flex-col items-center justify-center p-2">
             <div class="flex items-center gap-4">
                 <span id="res-icon" class="text-5xl bg-white/20 rounded-full p-2">✅</span>
                 <div class="text-left">
                     <div id="res-title" class="text-5xl font-black text-white tracking-tighter leading-none">OK</div>
-                    <div id="res-desc" class="text-xs text-white/80 font-bold uppercase tracking-widest mt-1">正常</div>
+                    <div id="res-desc" class="text-xs text-white/80 font-bold uppercase tracking-widest mt-1">状態正常</div>
                 </div>
             </div>
             <button id="btn-confirm" class="mt-4 bg-white text-gray-900 font-black py-2 px-10 rounded-full shadow-lg active:scale-95 transition-transform text-sm border-b-4 border-gray-300 active:border-b-0 active:translate-y-0.5">
@@ -59,7 +59,6 @@
     </div>
 
     <script>
-        // --- 要素取得と変数 ---
         const topPanel = document.getElementById('top-panel');
         const viewProcess = document.getElementById('view-process');
         const viewResult = document.getElementById('view-result');
@@ -78,54 +77,56 @@
         const photoContainer = document.getElementById('photo-container');
 
         let model, isModeActive = false, isCapturing = false;
-        let audioCtx; // 音声コンテキスト
+        let audioCtx;
 
-        // --- 音を鳴らす関数 ---
         function playFeedbackSound(type) {
             if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
             const oscillator = audioCtx.createOscillator();
             const gainNode = audioCtx.createGain();
             oscillator.connect(gainNode);
             gainNode.connect(audioCtx.destination);
-
             if (type === 'OK') {
-                oscillator.type = 'sine';
-                oscillator.frequency.setValueAtTime(880, audioCtx.currentTime); // 高い音
-                gainNode.gain.setValueAtTime(0.1, audioCtx.currentTime);
-                oscillator.start();
-                oscillator.stop(audioCtx.currentTime + 0.2);
+                oscillator.type = 'sine'; oscillator.frequency.setValueAtTime(880, audioCtx.currentTime);
+                gainNode.gain.setValueAtTime(0.1, audioCtx.currentTime); oscillator.start(); oscillator.stop(audioCtx.currentTime + 0.2);
             } else if (type === 'NG') {
-                oscillator.type = 'sawtooth';
-                oscillator.frequency.setValueAtTime(220, audioCtx.currentTime); // 低い警告音
-                gainNode.gain.setValueAtTime(0.1, audioCtx.currentTime);
-                oscillator.start();
-                oscillator.stop(audioCtx.currentTime + 0.5);
-                // NG時はバイブレーション (Androidのみ)
+                oscillator.type = 'sawtooth'; oscillator.frequency.setValueAtTime(220, audioCtx.currentTime);
+                gainNode.gain.setValueAtTime(0.1, audioCtx.currentTime); oscillator.start(); oscillator.stop(audioCtx.currentTime + 0.5);
                 if (navigator.vibrate) navigator.vibrate([200, 100, 200, 100, 500]);
             }
         }
 
+        // --- 【修正】初期化処理をより堅牢に ---
         async function init() {
-            mainStatus.innerText = "AI起動中...";
-            subStatus.innerText = "画像解析モデルを読み込んでいます";
-            btnTrigger.disabled = true;
-            btnTrigger.classList.add('opacity-50');
-            model = await cocoSsd.load();
-            const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" }, audio: false });
-            video.srcObject = stream;
-            video.onloadedmetadata = () => {
-                mainStatus.innerText = "信号待機中";
-                subStatus.innerText = "マキシブレーキ信号(J1939)の受信を待っています";
-                btnTrigger.disabled = false;
-                btnTrigger.classList.remove('opacity-50');
-                detectFrame();
-            };
+            try {
+                // 1. モデル読み込み
+                mainStatus.innerText = "AI起動中...";
+                model = await cocoSsd.load();
+
+                // 2. カメラ起動
+                mainStatus.innerText = "カメラ起動中...";
+                const stream = await navigator.mediaDevices.getUserMedia({ 
+                    video: { facingMode: "environment" }, 
+                    audio: false 
+                });
+                video.srcObject = stream;
+
+                video.onloadedmetadata = () => {
+                    mainStatus.innerText = "信号待機中";
+                    subStatus.innerText = "マキシブレーキ信号(J1939)の受信を待っています";
+                    btnTrigger.classList.remove('hidden'); // 準備ができたらボタンを表示
+                    detectFrame();
+                };
+            } catch (error) {
+                console.error(error);
+                mainStatus.innerText = "起動エラー";
+                subStatus.innerText = "カメラの許可またはネット接続を確認してください";
+            }
         }
 
         btnTrigger.addEventListener('click', () => {
-            if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)(); // 音声を有効化
+            if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
             isModeActive = true;
-            btnTrigger.style.display = 'none';
+            btnTrigger.classList.add('hidden');
             mainStatus.innerText = "作業確認中";
             mainStatus.className = "text-3xl font-black text-blue-600 animate-pulse tracking-tight";
             subStatus.innerText = "対象をスキャン中：カメラを固定してください";
@@ -207,7 +208,7 @@
             bleBadge.innerHTML = '<span class="w-1.5 h-1.5 rounded-full bg-blue-500 animate-pulse"></span> BLE接続：確立済み';
             mainStatus.innerText = "信号待機中";
             mainStatus.className = "text-2xl font-black text-gray-800 tracking-tight";
-            btnTrigger.style.display = 'flex';
+            btnTrigger.classList.remove('hidden'); // ボタン再表示
             video.classList.add('opacity-80');
             photoContainer.classList.add('opacity-50');
             photoContainer.innerHTML = '<div class="text-[9px] text-gray-500 font-bold w-full text-center mb-2">自動連写された画像がここに表示されます</div>';
