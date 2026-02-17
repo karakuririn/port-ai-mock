@@ -3,13 +3,12 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-    <title>港湾AI自動検査システム v9_Morphing</title>
+    <title>港湾AI自動検査システム v9_Morphing_NoScanLine</title>
     <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs"></script>
     <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/coco-ssd"></script>
     <script src="https://cdn.tailwindcss.com"></script>
     <style>
-        .scanner-line { position: absolute; width: 100%; height: 4px; background: #eab308; box-shadow: 0 0 15px #eab308; animation: scan 1.5s linear infinite; top: 0; opacity: 0; }
-        @keyframes scan { 0% { top: 0; opacity: 0; } 20% { opacity: 1; } 80% { opacity: 1; } 100% { top: 100%; opacity: 0; } }
+        /* スキャン線関連のスタイルを削除しました */
         .flash-effect { animation: flash 0.1s ease-out; }
         @keyframes flash { from { background: white; opacity: 0.8; } to { background: transparent; opacity: 0; } }
         .pb-safe { padding-bottom: env(safe-area-inset-bottom); }
@@ -51,7 +50,6 @@
     <div class="h-[70%] relative bg-black overflow-hidden">
         <video id="webcam" class="absolute inset-0 w-full h-full object-cover opacity-80" autoplay playsinline muted></video>
         <canvas id="overlay" class="absolute inset-0 w-full h-full object-cover"></canvas>
-        <div id="scan-bar" class="scanner-line"></div>
         <div id="shutter-overlay" class="absolute inset-0 pointer-events-none"></div>
         
         <div id="photo-container" class="absolute bottom-0 left-0 right-0 h-24 bg-gradient-to-t from-black/90 to-transparent p-2 pb-safe flex gap-2 overflow-x-auto items-end opacity-50 transition-opacity duration-300">
@@ -73,17 +71,13 @@
         const resDesc = document.getElementById('res-desc');
         const video = document.getElementById('webcam');
         const overlay = document.getElementById('overlay');
-        const scanBar = document.getElementById('scan-bar');
         const shutterOverlay = document.getElementById('shutter-overlay');
         const photoContainer = document.getElementById('photo-container');
 
         let model, isModeActive = false, isCapturing = false;
         let audioCtx;
         
-        // --- 【新機能】モーフィング用変数 ---
-        // 現在の枠の状態 [x, y, width, height]
         let currentBox = { x: 0, y: 0, w: 0, h: 0, visible: false };
-        // 中央の待機ポジション用
         let centerBox = { x: 0, y: 0, w: 200, h: 200 };
 
         function playFeedbackSound(type) {
@@ -111,10 +105,9 @@
                     subStatus.innerText = "マキシブレーキ信号(J1939)の受信を待っています";
                     btnTrigger.classList.remove('hidden');
                     
-                    // 初期位置を画面中央に設定
                     centerBox.x = (video.videoWidth - 200) / 2;
                     centerBox.y = (video.videoHeight - 200) / 2;
-                    currentBox = { ...centerBox, visible: true }; // 初期状態は中央
+                    currentBox = { ...centerBox, visible: true };
 
                     detectFrame();
                 };
@@ -133,13 +126,11 @@
             subStatus.innerText = "対象をスキャン中：カメラを固定してください";
             bleBadge.className = "px-2 py-0.5 rounded text-[10px] font-bold border flex items-center gap-1 bg-gray-200 text-gray-500 border-gray-300";
             bleBadge.innerHTML = '<span class="w-1.5 h-1.5 rounded-full bg-gray-400"></span> BLE切断：スタンドアロン動作中';
-            scanBar.style.opacity = "1";
             video.classList.remove('opacity-80');
             photoContainer.classList.remove('opacity-50');
             photoContainer.innerHTML = '';
         });
 
-        // --- 【劇的進化】滑らかな追従ロジック ---
         async function detectFrame() {
             if (!video.videoWidth) { requestAnimationFrame(detectFrame); return; }
             
@@ -148,30 +139,24 @@
             const ctx = overlay.getContext('2d');
             ctx.clearRect(0, 0, overlay.width, overlay.height);
 
-            // 中央ポジションの更新（画面サイズが変わる可能性があるため）
             centerBox.x = (overlay.width - 200) / 2;
             centerBox.y = (overlay.height - 200) / 2;
 
-            // 1. 連写中：最後にロックした位置で固定表示（赤枠）
             if (isCapturing) {
                 drawBox(ctx, currentBox.x, currentBox.y, currentBox.w, currentBox.h, "#ef4444", 8, "CAPTURING...");
                 requestAnimationFrame(detectFrame);
                 return;
             }
 
-            // 2. 探索モード
             const predictions = await model.detect(video);
             
-            // 目標とする枠（ターゲット）を決める
-            let target = { ...centerBox }; // デフォルトは中央の「待機枠」
+            let target = { ...centerBox };
             let hasTarget = false;
             let score = 0;
             let label = "SCANNING";
 
             if (predictions.length > 0) {
-                // 最も確信度が高い物体をターゲットにする
                 const best = predictions[0];
-                // 閾値を下げて(0.25)、何かしらに反応しやすくする
                 if (best.score > 0.25) {
                     target = { x: best.bbox[0], y: best.bbox[1], w: best.bbox[2], h: best.bbox[3] };
                     hasTarget = true;
@@ -180,28 +165,20 @@
                 }
             }
 
-            // 3. モーフィング処理（現在の枠をターゲットに向けて少しずつ動かす）
-            // lerp (Linear Interpolation) 係数 0.2 で滑らかに追従
             const lerp = 0.2;
             currentBox.x += (target.x - currentBox.x) * lerp;
             currentBox.y += (target.y - currentBox.y) * lerp;
             currentBox.w += (target.w - currentBox.w) * lerp;
             currentBox.h += (target.h - currentBox.h) * lerp;
 
-            // 4. 描画
-            // ターゲット捕捉時は「青くて太い」、未捕捉時は「薄い水色で細い」
             const color = hasTarget ? "#2563eb" : "rgba(100, 200, 255, 0.4)";
             const lineWidth = hasTarget ? 4 : 2;
             
-            // 待機中は点線、補足中は実線などの演出も可能だが、今回はシンプルに色と太さで表現
             drawBox(ctx, currentBox.x, currentBox.y, currentBox.w, currentBox.h, color, lineWidth, hasTarget ? label : null);
 
-            // 5. トリガー判定（しっかりとらえた瞬間）
-            // 枠がターゲットに十分近づき、かつ確信度が高い場合
             if (isModeActive && hasTarget && score > 0.6) {
-                // 枠の動きが落ち着いているかチェック（急激に動いている最中は撮らない）
                 const diff = Math.abs(target.x - currentBox.x) + Math.abs(target.w - currentBox.w);
-                if (diff < 50) { // 差が小さい＝吸着した
+                if (diff < 50) {
                     isModeActive = false;
                     startBurstCapture();
                 }
@@ -210,7 +187,6 @@
             requestAnimationFrame(detectFrame);
         }
 
-        // 枠描画のヘルパー関数
         function drawBox(ctx, x, y, w, h, color, lineWidth, text) {
             ctx.beginPath();
             ctx.lineWidth = lineWidth;
@@ -218,17 +194,12 @@
             ctx.rect(x, y, w, h);
             ctx.stroke();
 
-            // 四隅の装飾（カッコいい枠にする）
             const cornerLen = 20;
             ctx.lineWidth = lineWidth + 2;
             ctx.beginPath();
-            // 左上
             ctx.moveTo(x, y + cornerLen); ctx.lineTo(x, y); ctx.lineTo(x + cornerLen, y);
-            // 右上
             ctx.moveTo(x + w - cornerLen, y); ctx.lineTo(x + w, y); ctx.lineTo(x + w, y + cornerLen);
-            // 右下
             ctx.moveTo(x + w, y + h - cornerLen); ctx.lineTo(x + w, y + h); ctx.lineTo(x + w - cornerLen, y + h);
-            // 左下
             ctx.moveTo(x + cornerLen, y + h); ctx.lineTo(x, y + h); ctx.lineTo(x, y + h - cornerLen);
             ctx.stroke();
 
@@ -243,7 +214,6 @@
             isCapturing = true;
             mainStatus.innerText = "連写撮影中...";
             mainStatus.className = "text-3xl font-black text-red-500 tracking-tight";
-            scanBar.style.animationDuration = "0.1s";
             for (let i = 0; i < 10; i++) {
                 shutterOverlay.classList.remove('flash-effect');
                 void shutterOverlay.offsetWidth;
@@ -292,7 +262,7 @@
             video.classList.add('opacity-80');
             photoContainer.classList.add('opacity-50');
             photoContainer.innerHTML = '<div class="text-[9px] text-gray-500 font-bold w-full text-center mb-2">自動連写された画像がここに表示されます</div>';
-            currentBox = { ...centerBox, visible: true }; // 枠を中央に戻す
+            currentBox = { ...centerBox, visible: true };
         });
 
         init();
