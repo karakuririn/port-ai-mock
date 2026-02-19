@@ -3,155 +3,109 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-    <title>港湾AI検査 v13.3_Debug</title>
-    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.3"></script>
+    <title>AI検査 診断モード v13.4</title>
     <script src="https://cdn.tailwindcss.com"></script>
-    <style>
-        .flash-effect { animation: flash 0.1s ease-out; }
-        @keyframes flash { from { background: white; opacity: 0.8; } to { background: transparent; opacity: 0; } }
-    </style>
 </head>
-<body class="bg-black h-screen flex flex-col overflow-hidden font-mono text-white">
+<body class="bg-slate-900 text-white font-mono text-xs p-4">
 
-    <div id="debug-log" class="absolute top-0 left-0 w-full bg-red-900/80 text-[10px] p-1 z-[100] break-all hidden"></div>
-
-    <div id="top-panel" class="h-[30%] bg-slate-900 border-b border-blue-500/30 flex flex-col relative z-20 transition-colors">
-        <div class="px-4 py-2 border-b border-white/10 flex justify-between items-center text-[9px] text-blue-400 font-bold uppercase tracking-widest italic">
-            <span>Debug Mode: v13.3</span>
-            <div id="https-check" class="text-red-500">HTTPS: CHECKING...</div>
-        </div>
-
-        <div id="view-process" class="flex-1 flex flex-col items-center justify-center p-4">
-            <h1 id="main-status" class="text-2xl font-black italic">WAITING READY</h1>
-            <p id="sub-status" class="text-[9px] text-blue-500/70 mt-1 uppercase">Initialize Camera & AI</p>
-            <button id="btn-trigger" class="mt-6 bg-blue-600 py-3 px-12 rounded-sm border-b-4 border-blue-800 font-black text-xs uppercase tracking-widest shadow-lg">
-                Start Inspection
-            </button>
-        </div>
-
-        <div id="view-result" class="hidden absolute inset-0 flex flex-col items-center justify-center p-2 bg-blue-600">
-            <div id="res-title" class="text-5xl font-black italic tracking-tighter">TARGET</div>
-            <button id="btn-confirm" class="mt-4 bg-white/20 px-8 py-2 rounded-full border border-white/50 text-xs">Reset</button>
-        </div>
+    <div id="diag-box" class="bg-black border border-blue-500 p-2 mb-4 h-48 overflow-y-auto leading-tight">
+        <p class="text-blue-400 border-b border-blue-900 mb-1 font-bold">[DIAGNOSTIC LOG]</p>
+        <div id="log-content"></div>
     </div>
 
-    <div class="h-[70%] relative bg-black">
-        <video id="webcam" class="absolute inset-0 w-full h-full object-cover opacity-60" autoplay playsinline muted></video>
-        <canvas id="overlay" class="absolute inset-0 w-full h-full object-cover"></canvas>
-        <div id="shutter-overlay" class="absolute inset-0 pointer-events-none"></div>
+    <div class="space-y-4">
+        <h1 class="text-xl font-black italic border-l-4 border-blue-500 pl-2">SYSTEM_v13.4</h1>
+        
+        <button onclick="testAlert()" class="w-full bg-yellow-600 p-4 font-black rounded uppercase shadow-lg">
+            1. CLICK TEST (Alert)
+        </button>
+
+        <button id="btn-trigger" class="w-full bg-blue-600 p-6 font-black rounded text-lg uppercase shadow-lg opacity-50 pointer-events-none">
+            2. START INSPECTION
+        </button>
+    </div>
+
+    <div class="mt-4 relative bg-black aspect-video overflow-hidden border border-white/10">
+        <video id="webcam" class="w-full h-full object-cover" autoplay playsinline muted></video>
+        <canvas id="overlay" class="absolute inset-0 w-full h-full"></canvas>
     </div>
 
     <script>
-        const logEl = document.getElementById('debug-log');
-        const httpsCheck = document.getElementById('https-check');
-        
-        // ログ出力関数
-        function log(msg, isError = true) {
-            logEl.innerText = msg;
-            logEl.classList.remove('hidden');
-            if(isError) console.error(msg);
+        const logArea = document.getElementById('log-content');
+        function addLog(msg, color = 'text-gray-300') {
+            const p = document.createElement('p');
+            p.className = color;
+            p.innerText = `> ${new Date().toLocaleTimeString()}: ${msg}`;
+            logArea.appendChild(p);
+            logArea.scrollTop = logArea.scrollHeight;
         }
 
-        // HTTPSチェック
-        if (location.protocol !== 'https:' && location.hostname !== 'localhost') {
-            log("CRITICAL: HTTPS is required for camera access.");
-            httpsCheck.innerText = "HTTPS: NO (ERROR)";
-        } else {
-            httpsCheck.innerText = "HTTPS: OK";
-            httpsCheck.className = "text-green-500";
+        // 0. JSの生存確認
+        addLog("JavaScript Engine: ALIVE", "text-green-400");
+
+        // 1. Alertテスト関数
+        window.testAlert = () => {
+            alert("JavaScript is working!");
+            addLog("Manual Click Test: SUCCESS", "text-green-400");
+        };
+
+        // 2. 致命的エラーのキャッチ
+        window.onerror = (msg, url, line) => {
+            addLog(`CRITICAL: ${msg} (Line:${line})`, "text-red-500");
+            return false;
+        };
+
+        // 3. 外部ライブラリの動的読み込みと監視
+        async function loadScript(url) {
+            return new Promise((resolve, reject) => {
+                const script = document.createElement('script');
+                script.src = url;
+                script.onload = () => resolve();
+                script.onerror = () => reject(`Load failed: ${url}`);
+                document.head.appendChild(script);
+            });
         }
 
-        const { ObjectDetector, FilesetResolver } = mediapipe.tasksVision;
-        let objectDetector;
-        const video = document.getElementById('webcam');
-        const overlay = document.getElementById('overlay');
-        const btnTrigger = document.getElementById('btn-trigger');
-
-        let isModeActive = false, isCapturing = false;
-        let currentBox = { x: 0, y: 0, w: 0, h: 0 };
-        let lastIdentifiedObject = "";
-        let lastConfidence = 0;
-
-        async function init() {
+        async function startSystem() {
             try {
-                const vision = await FilesetResolver.forVisionTasks("https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.3/wasm");
-                objectDetector = await ObjectDetector.createFromOptions(vision, {
-                    baseOptions: { modelAssetPath: `https://storage.googleapis.com/mediapipe-models/object_detector/efficientdet_lite0/float16/1/efficientdet_lite0.tflite`, delegate: "GPU" },
-                    scoreThreshold: 0.3, runningMode: "VIDEO"
-                });
+                addLog("Loading MediaPipe Tasks...");
+                await loadScript("https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.3");
+                addLog("MediaPipe: LOADED", "text-green-400");
+
+                const { ObjectDetector, FilesetResolver } = mediapipe.tasksVision;
+                addLog("Initializing AI Model (this may take time)...");
                 
+                const vision = await FilesetResolver.forVisionTasks("https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.3/wasm");
+                const objectDetector = await ObjectDetector.createFromOptions(vision, {
+                    baseOptions: { 
+                        modelAssetPath: "https://storage.googleapis.com/mediapipe-models/object_detector/efficientdet_lite0/float16/1/efficientdet_lite0.tflite",
+                        delegate: "GPU" 
+                    },
+                    scoreThreshold: 0.3,
+                    runningMode: "VIDEO"
+                });
+                addLog("AI Model: READY", "text-green-400");
+
+                addLog("Requesting Camera...");
                 const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" } });
-                video.srcObject = stream;
-                video.onloadedmetadata = () => {
-                    document.getElementById('main-status').innerText = "SIGNAL STANDBY";
-                    detectFrame();
+                document.getElementById('webcam').srcObject = stream;
+                addLog("Camera: ACTIVE", "text-green-400");
+
+                // すべて成功したらボタンを有効化
+                const btn = document.getElementById('btn-trigger');
+                btn.classList.remove('opacity-50', 'pointer-events-none');
+                btn.onclick = () => {
+                    addLog("Inspection Started!");
+                    // ここにスキャンロジックを入れる
                 };
-            } catch (e) { 
-                log(`INIT ERROR: ${e.name} - ${e.message}`);
+
+            } catch (e) {
+                addLog(`ERROR: ${e.message || e}`, "text-red-500");
             }
         }
 
-        // ボタンクリック時の即時反応テスト
-        btnTrigger.addEventListener('click', () => {
-            log("Button clicked!", false); // クリックされたらログを出す
-            isModeActive = true;
-            btnTrigger.classList.add('hidden');
-            document.getElementById('main-status').innerText = "SCANNING";
-            document.getElementById('main-status').classList.add('animate-pulse', 'text-blue-500');
-            video.classList.remove('opacity-60');
-        });
-
-        async function detectFrame() {
-            if (!video.videoWidth || !objectDetector) { requestAnimationFrame(detectFrame); return; }
-            overlay.width = video.videoWidth; overlay.height = video.videoHeight;
-            const ctx = overlay.getContext('2d'); ctx.clearRect(0, 0, overlay.width, overlay.height);
-
-            if (isCapturing) { requestAnimationFrame(detectFrame); return; }
-
-            const detections = objectDetector.detectForVideo(video, Date.now());
-            let target = { x: (overlay.width-200)/2, y: (overlay.height-200)/2, w: 200, h: 200 };
-            let hasTarget = false;
-
-            if (detections.detections && detections.detections.length > 0) {
-                const best = detections.detections[0];
-                lastIdentifiedObject = best.categories[0].categoryName.toUpperCase();
-                lastConfidence = Math.round(best.categories[0].score * 100);
-                target = { x: best.boundingBox.originX, y: best.boundingBox.originY, w: best.boundingBox.width, h: best.boundingBox.height };
-                hasTarget = true;
-            }
-
-            const lerp = 0.25;
-            currentBox.x += (target.x - currentBox.x) * lerp;
-            currentBox.y += (target.y - currentBox.y) * lerp;
-            currentBox.w += (target.w - currentBox.w) * lerp;
-            currentBox.h += (target.h - currentBox.h) * lerp;
-
-            const color = hasTarget ? "#3b82f6" : "rgba(255,255,255,0.2)";
-            ctx.strokeStyle = color; ctx.lineWidth = 4;
-            ctx.strokeRect(currentBox.x, currentBox.y, currentBox.w, currentBox.h);
-
-            if (isModeActive && hasTarget && lastConfidence > 60) {
-                isModeActive = false;
-                startCapture();
-            }
-            requestAnimationFrame(detectFrame);
-        }
-
-        async function startCapture() {
-            isCapturing = true;
-            document.getElementById('main-status').innerText = "LOCK ON";
-            await new Promise(r => setTimeout(r, 1000));
-            isCapturing = false;
-            document.getElementById('view-process').classList.add('hidden');
-            document.getElementById('view-result').classList.remove('hidden');
-            document.getElementById('res-title').innerText = lastIdentifiedObject;
-        }
-
-        document.getElementById('btn-confirm').addEventListener('click', () => {
-            location.reload(); // リセット時は確実性のためにリロード
-        });
-
-        init();
+        // 実行開始
+        startSystem();
     </script>
 </body>
 </html>
