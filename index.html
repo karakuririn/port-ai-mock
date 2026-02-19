@@ -3,26 +3,34 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-    <title>港湾AI自動検査 v13.8_Integrated</title>
+    <title>港湾AI検査 v14.0_Robust</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <style>
         .flash-effect { animation: flash 0.1s ease-out; }
         @keyframes flash { from { background: white; opacity: 0.8; } to { background: transparent; opacity: 0; } }
         .camera-grid { background-image: radial-gradient(rgba(37, 99, 235, 0.1) 1px, transparent 1px); background-size: 30px 30px; }
+        /* AIの生存確認用アニメーション */
+        .heartbeat { animation: beat 1s infinite; }
+        @keyframes beat { 0%, 100% { opacity: 0.3; } 50% { opacity: 1; } }
     </style>
 </head>
-<body class="bg-black h-screen flex flex-col overflow-hidden font-mono select-none">
+<body class="bg-black h-screen flex flex-col overflow-hidden font-mono select-none text-white">
 
     <div id="top-panel" class="h-[30%] bg-slate-900 border-b border-blue-500/30 flex flex-col relative z-20 transition-colors duration-500">
-        <div class="px-4 py-2 border-b border-white/10 flex justify-between items-center text-[9px] text-blue-400 font-bold uppercase tracking-widest italic">
-            <span>Stage 2: Identification Bridge</span>
-            <div id="ble-badge" class="px-2 py-0.5 rounded bg-blue-500/20 text-blue-400 border border-blue-500/50">J1939: CONNECTED</div>
+        <div class="px-4 py-2 border-b border-white/10 flex justify-between items-center">
+            <div class="flex items-center gap-2">
+                <div id="ai-heartbeat" class="w-2 h-2 rounded-full bg-green-500 heartbeat"></div>
+                <span class="text-[9px] text-blue-400 font-bold uppercase tracking-widest">v14.0 AI_LIVE</span>
+            </div>
+            <button onclick="location.reload(true)" class="text-[8px] bg-red-900/50 px-2 py-1 rounded border border-red-500 text-red-200">
+                FORCE RELOAD
+            </button>
         </div>
 
         <div id="view-process" class="flex-1 flex flex-col items-center justify-center p-4">
             <div class="text-center">
                 <h1 id="main-status" class="text-3xl font-black text-white tracking-tighter italic uppercase">Waiting Signal</h1>
-                <p id="sub-status" class="text-[10px] text-blue-500/70 font-bold mt-1 uppercase">Ready for inspection</p>
+                <p id="sub-status" class="text-[10px] text-blue-500/70 font-bold mt-1 uppercase">Ready for tractor-head sync</p>
             </div>
             <button id="btn-trigger" class="hidden mt-6 bg-blue-600 text-white text-xs font-black py-4 px-12 rounded-sm border-b-4 border-blue-800 uppercase tracking-widest shadow-lg active:translate-y-1 active:border-b-0 transition-all">
                 Start Inspection
@@ -30,13 +38,15 @@
         </div>
 
         <div id="view-result" class="hidden absolute inset-0 flex flex-col items-center justify-center p-2 animate-fade-in bg-blue-600">
-            <div class="flex flex-col items-center text-white text-center">
+            <div class="flex flex-col items-center text-center">
                 <span class="text-[10px] font-bold tracking-[0.5em] mb-1 opacity-80 uppercase">Identification Result</span>
                 <div id="res-title" class="text-5xl font-black italic tracking-tighter leading-none mb-2">TARGET</div>
                 <div id="res-id-detail" class="text-[10px] font-bold bg-black/20 px-4 py-1 rounded-full mb-3">CONFIDENCE: --%</div>
-                <div id="res-desc" class="text-xs font-bold border-t border-white/30 pt-2 w-full uppercase tracking-widest">Inspection Pass</div>
+                <div id="res-desc" class="text-xs font-bold border-t border-white/30 pt-2 w-full uppercase">Inspection Pass</div>
             </div>
-            <button id="btn-confirm" class="mt-6 bg-white/20 text-white font-bold py-2 px-12 rounded-full border border-white/50 text-xs uppercase">Confirm & Reset</button>
+            <button id="btn-confirm" class="mt-6 bg-white text-blue-900 font-bold py-3 px-16 rounded-full shadow-xl text-xs uppercase">
+                Next Inspection
+            </button>
         </div>
     </div>
 
@@ -52,10 +62,14 @@
 
         const mainStatus = document.getElementById('main-status');
         const btnTrigger = document.getElementById('btn-trigger');
+        const btnConfirm = document.getElementById('btn-confirm');
+        const viewResult = document.getElementById('view-result');
+        const viewProcess = document.getElementById('view-process');
         const video = document.getElementById('webcam');
         const overlay = document.getElementById('overlay');
         const shutterOverlay = document.getElementById('shutter-overlay');
         const photoContainer = document.getElementById('photo-container');
+        const heartbeat = document.getElementById('ai-heartbeat');
 
         let objectDetector;
         let isModeActive = false, isCapturing = false;
@@ -72,8 +86,7 @@
                         modelAssetPath: "https://storage.googleapis.com/mediapipe-models/object_detector/efficientdet_lite0/float16/1/efficientdet_lite0.tflite",
                         delegate: "GPU" 
                     },
-                    scoreThreshold: 0.3,
-                    runningMode: "VIDEO"
+                    scoreThreshold: 0.3, runningMode: "VIDEO"
                 });
 
                 const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" } });
@@ -86,7 +99,7 @@
                     detectFrame();
                 };
             } catch (e) {
-                mainStatus.innerText = "INIT ERROR";
+                heartbeat.style.backgroundColor = "red";
                 console.error(e);
             }
         }
@@ -97,15 +110,40 @@
             mainStatus.innerText = "SCANNING";
             mainStatus.className = "text-3xl font-black text-blue-500 italic animate-pulse";
             video.classList.remove('opacity-60');
+            video.play(); // 強制再生
+        });
+
+        // 堅牢なリセット処理
+        btnConfirm.addEventListener('click', () => {
+            viewResult.classList.add('hidden');
+            viewProcess.classList.remove('hidden');
+            mainStatus.innerText = "WAITING SIGNAL";
+            mainStatus.className = "text-3xl font-black text-white italic uppercase";
+            btnTrigger.classList.remove('hidden');
+            
+            // 内部状態の完全クリーンアップ
+            isModeActive = false;
+            isCapturing = false;
+            lastIdentifiedObject = "NONE";
+            lastConfidence = 0;
+            photoContainer.innerHTML = '';
+            video.classList.add('opacity-60');
+            
+            // ビデオの再活性化（フリーズ防止）
+            video.play().catch(e => console.log("Play interrupted"));
         });
 
         async function detectFrame() {
+            // ハートビートの更新
+            heartbeat.classList.toggle('bg-green-500');
+            heartbeat.classList.toggle('bg-green-900');
+
             if (!video.videoWidth || !objectDetector) { requestAnimationFrame(detectFrame); return; }
             overlay.width = video.videoWidth; overlay.height = video.videoHeight;
             const ctx = overlay.getContext('2d'); ctx.clearRect(0, 0, overlay.width, overlay.height);
 
             if (isCapturing) {
-                drawBox(ctx, currentBox.x, currentBox.y, currentBox.w, currentBox.h, "#ef4444", 6, "IDENTIFYING...");
+                drawBox(ctx, currentBox.x, currentBox.y, currentBox.w, currentBox.h, "#ef4444", 6, "ANALYZING...");
                 requestAnimationFrame(detectFrame); return;
             }
 
@@ -143,32 +181,25 @@
             isCapturing = true;
             mainStatus.innerText = "IDENTIFYING";
             mainStatus.className = "text-4xl font-black text-white italic animate-pulse";
-            
-            // 識別AIの呼び出しシミュレーション（1.2秒）
             await new Promise(r => setTimeout(r, 1200));
-
-            for (let i = 0; i < 6; i++) {
-                shutterOverlay.classList.remove('flash-effect');
-                void shutterOverlay.offsetWidth;
+            for (let i = 0; i < 5; i++) {
+                shutterOverlay.classList.remove('flash-effect'); void shutterOverlay.offsetWidth;
                 shutterOverlay.classList.add('flash-effect');
-                addThumbnail();
-                await new Promise(r => setTimeout(r, 100));
+                addThumbnail(); await new Promise(r => setTimeout(r, 150));
             }
             isCapturing = false;
             showResult();
         }
 
         function showResult() {
-            document.getElementById('view-process').classList.add('hidden');
-            document.getElementById('view-result').classList.remove('hidden');
+            viewProcess.classList.add('hidden');
+            viewResult.classList.remove('hidden');
             document.getElementById('res-title').innerText = lastIdentifiedObject;
             document.getElementById('res-id-detail').innerText = `CONFIDENCE: ${lastConfidence}%`;
-            
-            const isOk = lastConfidence > 45; 
-            document.getElementById('view-result').className = isOk ? 
+            viewResult.className = lastConfidence > 45 ? 
                 "hidden absolute inset-0 flex flex-col items-center justify-center p-2 animate-fade-in bg-blue-600" : 
                 "hidden absolute inset-0 flex flex-col items-center justify-center p-2 animate-fade-in bg-red-600";
-            document.getElementById('view-result').classList.remove('hidden');
+            viewResult.classList.remove('hidden');
         }
 
         function drawBox(ctx, x, y, w, h, color, lineWidth, text) {
@@ -189,10 +220,6 @@
             img.className = "h-20 w-20 object-cover border border-blue-500/50 rounded-sm";
             photoContainer.insertBefore(img, photoContainer.firstChild);
         }
-
-        document.getElementById('btn-confirm').addEventListener('click', () => {
-            location.reload();
-        });
 
         init();
     </script>
