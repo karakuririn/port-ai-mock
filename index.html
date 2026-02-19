@@ -3,29 +3,25 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-    <title>AI検査 診断モード v13.4</title>
+    <title>AI検査 復旧モード v13.5</title>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.3" crossorigin="anonymous"></script>
     <script src="https://cdn.tailwindcss.com"></script>
 </head>
-<body class="bg-slate-900 text-white font-mono text-xs p-4">
+<body class="bg-slate-900 text-white font-mono text-[10px] p-4">
 
-    <div id="diag-box" class="bg-black border border-blue-500 p-2 mb-4 h-48 overflow-y-auto leading-tight">
-        <p class="text-blue-400 border-b border-blue-900 mb-1 font-bold">[DIAGNOSTIC LOG]</p>
+    <div id="diag-box" class="bg-black border border-blue-500 p-2 mb-4 h-40 overflow-y-auto">
+        <p class="text-blue-400 border-b border-blue-900 mb-1 font-bold">[NETWORK DIAGNOSTIC]</p>
         <div id="log-content"></div>
     </div>
 
     <div class="space-y-4">
-        <h1 class="text-xl font-black italic border-l-4 border-blue-500 pl-2">SYSTEM_v13.4</h1>
-        
-        <button onclick="testAlert()" class="w-full bg-yellow-600 p-4 font-black rounded uppercase shadow-lg">
-            1. CLICK TEST (Alert)
-        </button>
-
-        <button id="btn-trigger" class="w-full bg-blue-600 p-6 font-black rounded text-lg uppercase shadow-lg opacity-50 pointer-events-none">
-            2. START INSPECTION
+        <h1 class="text-lg font-black italic border-l-4 border-blue-500 pl-2">SYSTEM_v13.5</h1>
+        <button id="btn-trigger" class="w-full bg-slate-700 p-6 font-black rounded text-lg uppercase opacity-50 pointer-events-none">
+            Wait for Initialization
         </button>
     </div>
 
-    <div class="mt-4 relative bg-black aspect-video overflow-hidden border border-white/10">
+    <div class="mt-4 relative bg-black aspect-video border border-white/10">
         <video id="webcam" class="w-full h-full object-cover" autoplay playsinline muted></video>
         <canvas id="overlay" class="absolute inset-0 w-full h-full"></canvas>
     </div>
@@ -35,47 +31,33 @@
         function addLog(msg, color = 'text-gray-300') {
             const p = document.createElement('p');
             p.className = color;
-            p.innerText = `> ${new Date().toLocaleTimeString()}: ${msg}`;
+            p.innerText = `> ${msg}`;
             logArea.appendChild(p);
             logArea.scrollTop = logArea.scrollHeight;
         }
 
-        // 0. JSの生存確認
-        addLog("JavaScript Engine: ALIVE", "text-green-400");
+        async function init() {
+            addLog("Checking MediaPipe object...");
+            
+            // window経由で明示的にチェック
+            if (typeof window.mediapipe === 'undefined') {
+                addLog("ERROR: mediapipe is not defined. Network block suspected.", "text-red-500");
+                addLog("ACTION: Try 4G/5G mobile data instead of Wi-Fi.", "text-yellow-400");
+                return;
+            }
+            
+            addLog("MediaPipe: FOUND", "text-green-400");
 
-        // 1. Alertテスト関数
-        window.testAlert = () => {
-            alert("JavaScript is working!");
-            addLog("Manual Click Test: SUCCESS", "text-green-400");
-        };
-
-        // 2. 致命的エラーのキャッチ
-        window.onerror = (msg, url, line) => {
-            addLog(`CRITICAL: ${msg} (Line:${line})`, "text-red-500");
-            return false;
-        };
-
-        // 3. 外部ライブラリの動的読み込みと監視
-        async function loadScript(url) {
-            return new Promise((resolve, reject) => {
-                const script = document.createElement('script');
-                script.src = url;
-                script.onload = () => resolve();
-                script.onerror = () => reject(`Load failed: ${url}`);
-                document.head.appendChild(script);
-            });
-        }
-
-        async function startSystem() {
             try {
-                addLog("Loading MediaPipe Tasks...");
-                await loadScript("https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.3");
-                addLog("MediaPipe: LOADED", "text-green-400");
-
-                const { ObjectDetector, FilesetResolver } = mediapipe.tasksVision;
-                addLog("Initializing AI Model (this may take time)...");
+                const { ObjectDetector, FilesetResolver } = window.mediapipe.tasksVision;
+                addLog("Loading WASM from Google Storage...");
                 
-                const vision = await FilesetResolver.forVisionTasks("https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.3/wasm");
+                // WASMファイル（AIの部品）をロード
+                const vision = await FilesetResolver.forVisionTasks(
+                    "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.3/wasm"
+                );
+                
+                addLog("Loading AI Model (Lite0)...");
                 const objectDetector = await ObjectDetector.createFromOptions(vision, {
                     baseOptions: { 
                         modelAssetPath: "https://storage.googleapis.com/mediapipe-models/object_detector/efficientdet_lite0/float16/1/efficientdet_lite0.tflite",
@@ -84,28 +66,25 @@
                     scoreThreshold: 0.3,
                     runningMode: "VIDEO"
                 });
-                addLog("AI Model: READY", "text-green-400");
 
-                addLog("Requesting Camera...");
+                addLog("Requesting Camera Access...");
                 const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" } });
                 document.getElementById('webcam').srcObject = stream;
-                addLog("Camera: ACTIVE", "text-green-400");
-
-                // すべて成功したらボタンを有効化
+                
+                addLog("SYSTEM READY", "text-green-400");
                 const btn = document.getElementById('btn-trigger');
+                btn.innerText = "START INSPECTION";
+                btn.classList.replace('bg-slate-700', 'bg-blue-600');
                 btn.classList.remove('opacity-50', 'pointer-events-none');
-                btn.onclick = () => {
-                    addLog("Inspection Started!");
-                    // ここにスキャンロジックを入れる
-                };
 
             } catch (e) {
-                addLog(`ERROR: ${e.message || e}`, "text-red-500");
+                addLog(`CRITICAL ERROR: ${e.name}`, "text-red-500");
+                addLog(`DETAILS: ${e.message}`, "text-red-400");
             }
         }
 
         // 実行開始
-        startSystem();
+        window.onload = init;
     </script>
 </body>
 </html>
