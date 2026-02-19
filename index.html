@@ -3,79 +3,78 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-    <title>港湾AI検査 v14.0_Robust</title>
+    <title>港湾AI検査 v14.1_Design_Standard</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <style>
         .flash-effect { animation: flash 0.1s ease-out; }
         @keyframes flash { from { background: white; opacity: 0.8; } to { background: transparent; opacity: 0; } }
-        .camera-grid { background-image: radial-gradient(rgba(37, 99, 235, 0.1) 1px, transparent 1px); background-size: 30px 30px; }
-        /* AIの生存確認用アニメーション */
+        .camera-grid { background-image: radial-gradient(rgba(0, 0, 0, 0.05) 1px, transparent 1px); background-size: 30px 30px; }
         .heartbeat { animation: beat 1s infinite; }
         @keyframes beat { 0%, 100% { opacity: 0.3; } 50% { opacity: 1; } }
     </style>
 </head>
-<body class="bg-black h-screen flex flex-col overflow-hidden font-mono select-none text-white">
+<body class="bg-white h-screen flex flex-col overflow-hidden font-sans select-none text-slate-800 transition-colors duration-300">
 
-    <div id="top-panel" class="h-[30%] bg-slate-900 border-b border-blue-500/30 flex flex-col relative z-20 transition-colors duration-500">
-        <div class="px-4 py-2 border-b border-white/10 flex justify-between items-center">
+    <div id="top-panel" class="h-[30%] bg-white flex flex-col relative z-20 transition-colors duration-500 border-b border-slate-200">
+        <div class="px-4 py-2 border-b border-slate-100 flex justify-between items-center">
             <div class="flex items-center gap-2">
                 <div id="ai-heartbeat" class="w-2 h-2 rounded-full bg-green-500 heartbeat"></div>
-                <span class="text-[9px] text-blue-400 font-bold uppercase tracking-widest">v14.0 AI_LIVE</span>
+                <span class="text-[9px] text-slate-400 font-bold uppercase tracking-widest">v14.1 Design_Standard</span>
             </div>
-            <button onclick="location.reload(true)" class="text-[8px] bg-red-900/50 px-2 py-1 rounded border border-red-500 text-red-200">
-                FORCE RELOAD
-            </button>
+            <button onclick="location.reload(true)" class="text-[8px] bg-slate-100 px-2 py-1 rounded text-slate-500">RELOAD</button>
         </div>
 
         <div id="view-process" class="flex-1 flex flex-col items-center justify-center p-4">
             <div class="text-center">
-                <h1 id="main-status" class="text-3xl font-black text-white tracking-tighter italic uppercase">Waiting Signal</h1>
-                <p id="sub-status" class="text-[10px] text-blue-500/70 font-bold mt-1 uppercase">Ready for tractor-head sync</p>
+                <h1 id="main-status" class="text-2xl font-black text-slate-800 tracking-tighter italic uppercase">Waiting Signal</h1>
+                <p id="sub-status" class="text-[10px] text-slate-400 font-bold mt-1 uppercase tracking-widest">Ready for manual or CAN trigger</p>
             </div>
-            <button id="btn-trigger" class="hidden mt-6 bg-blue-600 text-white text-xs font-black py-4 px-12 rounded-sm border-b-4 border-blue-800 uppercase tracking-widest shadow-lg active:translate-y-1 active:border-b-0 transition-all">
+            <button id="btn-trigger" class="hidden mt-6 bg-slate-800 text-white text-xs font-bold py-3 px-12 rounded-full shadow-lg active:scale-95 transition-all uppercase tracking-widest">
                 Start Inspection
             </button>
         </div>
 
-        <div id="view-result" class="hidden absolute inset-0 flex flex-col items-center justify-center p-2 animate-fade-in bg-blue-600">
+        <div id="view-result" class="hidden absolute inset-0 flex flex-col items-center justify-center p-2 animate-fade-in transition-colors duration-300">
             <div class="flex flex-col items-center text-center">
-                <span class="text-[10px] font-bold tracking-[0.5em] mb-1 opacity-80 uppercase">Identification Result</span>
-                <div id="res-title" class="text-5xl font-black italic tracking-tighter leading-none mb-2">TARGET</div>
-                <div id="res-id-detail" class="text-[10px] font-bold bg-black/20 px-4 py-1 rounded-full mb-3">CONFIDENCE: --%</div>
-                <div id="res-desc" class="text-xs font-bold border-t border-white/30 pt-2 w-full uppercase">Inspection Pass</div>
+                <span class="text-[10px] font-bold tracking-[0.5em] mb-1 opacity-80 uppercase">Inspection Result</span>
+                <div id="res-title" class="text-6xl font-black italic tracking-tighter leading-none mb-2">PASS</div>
+                <div id="res-desc" class="text-sm font-bold mt-2 border-t border-black/10 pt-2 w-full uppercase">状態正常 (判定率: --%)</div>
             </div>
-            <button id="btn-confirm" class="mt-6 bg-white text-blue-900 font-bold py-3 px-16 rounded-full shadow-xl text-xs uppercase">
+            <button id="btn-confirm" class="mt-8 bg-white/90 text-slate-900 font-black py-3 px-16 rounded-full shadow-2xl text-xs uppercase active:scale-95 transition-transform">
                 Next Inspection
             </button>
         </div>
     </div>
 
-    <div class="h-[70%] relative bg-black overflow-hidden camera-grid">
-        <video id="webcam" class="absolute inset-0 w-full h-full object-cover opacity-60" autoplay playsinline muted></video>
+    <div class="h-[70%] relative bg-slate-50 overflow-hidden camera-grid">
+        <video id="webcam" class="absolute inset-0 w-full h-full object-cover" autoplay playsinline muted></video>
         <canvas id="overlay" class="absolute inset-0 w-full h-full object-cover"></canvas>
         <div id="shutter-overlay" class="absolute inset-0 pointer-events-none"></div>
-        <div id="photo-container" class="absolute bottom-0 left-0 right-0 h-24 bg-gradient-to-t from-black to-transparent p-4 flex gap-2 overflow-x-auto items-end"></div>
+        <div id="photo-container" class="absolute bottom-0 left-0 right-0 h-24 bg-gradient-to-t from-white/90 to-transparent p-4 flex gap-2 overflow-x-auto items-end"></div>
     </div>
 
     <script type="module">
         import { ObjectDetector, FilesetResolver } from "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.3";
 
-        const mainStatus = document.getElementById('main-status');
-        const btnTrigger = document.getElementById('btn-trigger');
-        const btnConfirm = document.getElementById('btn-confirm');
+        const body = document.body;
+        const topPanel = document.getElementById('top-panel');
         const viewResult = document.getElementById('view-result');
         const viewProcess = document.getElementById('view-process');
+        const mainStatus = document.getElementById('main-status');
+        const subStatus = document.getElementById('sub-status');
+        const resTitle = document.getElementById('res-title');
+        const resDesc = document.getElementById('res-desc');
+        const btnTrigger = document.getElementById('btn-trigger');
+        const btnConfirm = document.getElementById('btn-confirm');
         const video = document.getElementById('webcam');
         const overlay = document.getElementById('overlay');
         const shutterOverlay = document.getElementById('shutter-overlay');
         const photoContainer = document.getElementById('photo-container');
         const heartbeat = document.getElementById('ai-heartbeat');
 
-        let objectDetector;
-        let isModeActive = false, isCapturing = false;
+        let objectDetector, isModeActive = false, isCapturing = false;
         let currentBox = { x: 0, y: 0, w: 0, h: 0 };
         let centerBox = { x: 0, y: 0, w: 200, h: 200 };
-        let lastIdentifiedObject = "NONE";
         let lastConfidence = 0;
 
         async function init() {
@@ -88,118 +87,97 @@
                     },
                     scoreThreshold: 0.3, runningMode: "VIDEO"
                 });
-
                 const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" } });
                 video.srcObject = stream;
-                
-                video.onloadedmetadata = () => {
-                    centerBox.x = (video.videoWidth - 200) / 2;
-                    centerBox.y = (video.videoHeight - 200) / 2;
-                    btnTrigger.classList.remove('hidden');
-                    detectFrame();
+                video.onloadedmetadata = () => { 
+                    centerBox.x = (video.videoWidth-200)/2; centerBox.y = (video.videoHeight-200)/2;
+                    btnTrigger.classList.remove('hidden'); detectFrame(); 
                 };
-            } catch (e) {
-                heartbeat.style.backgroundColor = "red";
-                console.error(e);
-            }
+            } catch (e) { heartbeat.style.backgroundColor = "red"; }
         }
 
         btnTrigger.addEventListener('click', () => {
-            isModeActive = true;
-            btnTrigger.classList.add('hidden');
+            isModeActive = true; btnTrigger.classList.add('hidden');
             mainStatus.innerText = "SCANNING";
-            mainStatus.className = "text-3xl font-black text-blue-500 italic animate-pulse";
-            video.classList.remove('opacity-60');
-            video.play(); // 強制再生
+            mainStatus.className = "text-3xl font-black text-blue-600 animate-pulse italic";
+            subStatus.innerText = "Target acquisition in progress";
         });
 
-        // 堅牢なリセット処理
         btnConfirm.addEventListener('click', () => {
-            viewResult.classList.add('hidden');
-            viewProcess.classList.remove('hidden');
-            mainStatus.innerText = "WAITING SIGNAL";
-            mainStatus.className = "text-3xl font-black text-white italic uppercase";
-            btnTrigger.classList.remove('hidden');
-            
-            // 内部状態の完全クリーンアップ
-            isModeActive = false;
-            isCapturing = false;
-            lastIdentifiedObject = "NONE";
-            lastConfidence = 0;
-            photoContainer.innerHTML = '';
-            video.classList.add('opacity-60');
-            
-            // ビデオの再活性化（フリーズ防止）
-            video.play().catch(e => console.log("Play interrupted"));
+            viewResult.classList.add('hidden'); viewProcess.classList.remove('hidden');
+            body.className = "bg-white h-screen flex flex-col overflow-hidden font-sans select-none text-slate-800 transition-colors duration-300";
+            topPanel.className = "h-[30%] bg-white flex flex-col relative z-20 transition-colors duration-500 border-b border-slate-200";
+            mainStatus.innerText = "WAITING SIGNAL"; mainStatus.className = "text-2xl font-black text-slate-800 italic uppercase";
+            btnTrigger.classList.remove('hidden'); photoContainer.innerHTML = '';
+            isModeActive = false; isCapturing = false;
         });
 
         async function detectFrame() {
-            // ハートビートの更新
-            heartbeat.classList.toggle('bg-green-500');
-            heartbeat.classList.toggle('bg-green-900');
-
+            heartbeat.classList.toggle('bg-green-500'); heartbeat.classList.toggle('bg-green-900');
             if (!video.videoWidth || !objectDetector) { requestAnimationFrame(detectFrame); return; }
             overlay.width = video.videoWidth; overlay.height = video.videoHeight;
             const ctx = overlay.getContext('2d'); ctx.clearRect(0, 0, overlay.width, overlay.height);
 
-            if (isCapturing) {
-                drawBox(ctx, currentBox.x, currentBox.y, currentBox.w, currentBox.h, "#ef4444", 6, "ANALYZING...");
-                requestAnimationFrame(detectFrame); return;
-            }
+            if (isCapturing) { drawBox(ctx, currentBox.x, currentBox.y, currentBox.w, currentBox.h, "#ef4444", 6, "IDENTIFYING..."); requestAnimationFrame(detectFrame); return; }
 
             const detections = objectDetector.detectForVideo(video, Date.now());
             let target = { ...centerBox }; let hasTarget = false;
 
             if (detections.detections && detections.detections.length > 0) {
                 const best = detections.detections[0];
-                lastIdentifiedObject = best.categories[0].categoryName.toUpperCase();
                 lastConfidence = Math.round(best.categories[0].score * 100);
                 target = { x: best.boundingBox.originX, y: best.boundingBox.originY, w: best.boundingBox.width, h: best.boundingBox.height };
                 hasTarget = true;
             }
 
             const lerp = 0.25;
-            currentBox.x += (target.x - currentBox.x) * lerp;
-            currentBox.y += (target.y - currentBox.y) * lerp;
-            currentBox.w += (target.w - currentBox.w) * lerp;
-            currentBox.h += (target.h - currentBox.h) * lerp;
+            currentBox.x += (target.x - currentBox.x) * lerp; currentBox.y += (target.y - currentBox.y) * lerp;
+            currentBox.w += (target.w - currentBox.w) * lerp; currentBox.h += (target.h - currentBox.h) * lerp;
 
-            const color = hasTarget ? "#3b82f6" : "rgba(255, 255, 255, 0.2)";
-            drawBox(ctx, currentBox.x, currentBox.y, currentBox.w, currentBox.h, color, hasTarget ? 4 : 1, hasTarget ? `${lastIdentifiedObject} ${lastConfidence}%` : null);
+            const color = hasTarget ? "#2563eb" : "rgba(0,0,0,0.1)";
+            drawBox(ctx, currentBox.x, currentBox.y, currentBox.w, currentBox.h, color, hasTarget ? 4 : 1, hasTarget ? `CONFIDENCE: ${lastConfidence}%` : null);
 
             if (isModeActive && hasTarget && lastConfidence > 60) {
-                const diff = Math.abs(target.x - currentBox.x);
-                if (diff < 40) {
-                    isModeActive = false;
-                    startBurstCapture();
-                }
+                if (Math.abs(target.x - currentBox.x) < 40) { isModeActive = false; startBurstCapture(); }
             }
             requestAnimationFrame(detectFrame);
         }
 
         async function startBurstCapture() {
             isCapturing = true;
-            mainStatus.innerText = "IDENTIFYING";
-            mainStatus.className = "text-4xl font-black text-white italic animate-pulse";
+            mainStatus.innerText = "IDENTIFYING"; mainStatus.className = "text-4xl font-black text-slate-800 italic animate-pulse";
             await new Promise(r => setTimeout(r, 1200));
-            for (let i = 0; i < 5; i++) {
+            // 【連写枚数を10枚に変更】
+            for (let i = 0; i < 10; i++) {
                 shutterOverlay.classList.remove('flash-effect'); void shutterOverlay.offsetWidth;
                 shutterOverlay.classList.add('flash-effect');
-                addThumbnail(); await new Promise(r => setTimeout(r, 150));
+                addThumbnail(); await new Promise(r => setTimeout(r, 100));
             }
-            isCapturing = false;
-            showResult();
+            isCapturing = false; showResult();
         }
 
         function showResult() {
             viewProcess.classList.add('hidden');
             viewResult.classList.remove('hidden');
-            document.getElementById('res-title').innerText = lastIdentifiedObject;
-            document.getElementById('res-id-detail').innerText = `CONFIDENCE: ${lastConfidence}%`;
-            viewResult.className = lastConfidence > 45 ? 
-                "hidden absolute inset-0 flex flex-col items-center justify-center p-2 animate-fade-in bg-blue-600" : 
-                "hidden absolute inset-0 flex flex-col items-center justify-center p-2 animate-fade-in bg-red-600";
-            viewResult.classList.remove('hidden');
+            
+            // 【OK/NG判定ロジック：閾値65%】
+            const isOk = lastConfidence >= 65;
+            
+            if (isOk) {
+                // OK判定のデザイン適用
+                body.className = "bg-green-500 h-screen flex flex-col overflow-hidden font-sans select-none text-white transition-colors duration-300";
+                topPanel.className = "h-[30%] bg-green-500 flex flex-col relative z-20 transition-colors duration-500";
+                resTitle.innerText = "OK";
+                resDesc.innerText = `状態正常 (判定率: ${lastConfidence}%)`;
+                if(navigator.vibrate) navigator.vibrate(200); // 1回振動
+            } else {
+                // NG判定のデザイン適用
+                body.className = "bg-red-600 h-screen flex flex-col overflow-hidden font-sans select-none text-yellow-400 transition-colors duration-300";
+                topPanel.className = "h-[30%] bg-red-600 flex flex-col relative z-20 transition-colors duration-500";
+                resTitle.innerText = "NG";
+                resDesc.innerText = "状態を確認してください";
+                if(navigator.vibrate) navigator.vibrate([200, 100, 200, 100, 200]); // 3回振動
+            }
         }
 
         function drawBox(ctx, x, y, w, h, color, lineWidth, text) {
@@ -208,8 +186,7 @@
             ctx.moveTo(x, y+c); ctx.lineTo(x, y); ctx.lineTo(x+c, y);
             ctx.moveTo(x+w-c, y); ctx.lineTo(x+w, y); ctx.lineTo(x+w, y+c);
             ctx.moveTo(x+w, y+h-c); ctx.lineTo(x+w, y+h); ctx.lineTo(x+w-c, y+h);
-            ctx.moveTo(x+c, y+h); ctx.lineTo(x, y+h); ctx.lineTo(x, y+h-c);
-            ctx.stroke();
+            ctx.moveTo(x+c, y+h); ctx.lineTo(x, y+h); ctx.lineTo(x, y+h-c); ctx.stroke();
             if (text) { ctx.fillStyle = color; ctx.font = "bold 12px monospace"; ctx.fillText(`> ${text}`, x, y - 8); }
         }
 
@@ -217,7 +194,7 @@
             const cvs = document.createElement('canvas'); cvs.width = 120; cvs.height = 90;
             cvs.getContext('2d').drawImage(video, 0, 0, 120, 90);
             const img = document.createElement('img'); img.src = cvs.toDataURL('image/jpeg');
-            img.className = "h-20 w-20 object-cover border border-blue-500/50 rounded-sm";
+            img.className = "h-20 w-20 object-cover border-2 border-white rounded shadow-md";
             photoContainer.insertBefore(img, photoContainer.firstChild);
         }
 
