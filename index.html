@@ -85,7 +85,7 @@
 
                 const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" } });
                 video.srcObject = stream;
-                video.onloadedmetadata = () => { btnTrigger.classList.remove('hidden'); Frame(); };
+                video.onloadedmetadata = () => { btnTrigger.classList.remove('hidden'); detectFrame(); };
             } catch (e) { mainStatus.innerText = "AI ERROR"; }
         }
 
@@ -99,43 +99,29 @@
             if (!video.videoWidth || !objectDetector) { requestAnimationFrame(detectFrame); return; }
             overlay.width = video.videoWidth; overlay.height = video.videoHeight;
             const ctx = overlay.getContext('2d'); ctx.clearRect(0, 0, overlay.width, overlay.height);
-        
+
             if (isCapturing) { requestAnimationFrame(detectFrame); return; }
-        
+
             const detections = objectDetector.detectForVideo(video, Date.now());
             const phoneDetection = detections.detections.find(d => TARGET_CLASSES.includes(d.categories[0].categoryName.toLowerCase()));
-        
+
             if (phoneDetection) {
                 const target = { x: phoneDetection.boundingBox.originX, y: phoneDetection.boundingBox.originY, w: phoneDetection.boundingBox.width, h: phoneDetection.boundingBox.height };
-                
-                // 指数移動平均(EMA)によるスムージング
-                currentBox.x += (target.x - currentBox.x) * SMOOTHING_FACTOR;
-                currentBox.y += (target.y - currentBox.y) * SMOOTHING_FACTOR;
-                currentBox.w += (target.w - currentBox.w) * SMOOTHING_FACTOR;
-                currentBox.h += (target.h - currentBox.h) * SMOOTHING_FACTOR;
+                const lerp = 0.25;
+                currentBox.x += (target.x - currentBox.x) * lerp;
+                currentBox.y += (target.y - currentBox.y) * lerp;
+                currentBox.w += (target.w - currentBox.w) * lerp;
+                currentBox.h += (target.h - currentBox.h) * lerp;
                 
                 lastConfidence = Math.round(phoneDetection.categories[0].score * 100);
-                
-                // 安定性の計算：中心点の移動距離が小さければカウントアップ
-                const dist = Math.sqrt(Math.pow(target.x - currentBox.x, 2) + Math.pow(target.y - currentBox.y, 2));
-                if (dist < 30 && lastConfidence > 50) {
-                    stabilityCounter++;
-                } else {
-                    stabilityCounter = 0;
+                drawBox(ctx, currentBox.x, currentBox.y, currentBox.w, currentBox.h, "#2563eb", 4, `SMARTPHONE ${lastConfidence}%`);
+
+                if (isModeActive && lastConfidence > 45) {
+                    if (Math.abs(target.x - currentBox.x) < 80) {
+                        isModeActive = false;
+                        startCaptureAndIdentify();
+                    }
                 }
-        
-                // 枠の色を安定度に応じて変化させる（視覚的フィードバック）
-                const boxColor = stabilityCounter > 10 ? "#22c55e" : "#2563eb"; 
-                drawBox(ctx, currentBox.x, currentBox.y, currentBox.w, currentBox.h, boxColor, 4, `ANALYZING... ${stabilityCounter * 5}%`);
-        
-                // トリガー条件：アクティブモードかつ、十分な安定性と信頼度
-                if (isModeActive && stabilityCounter >= STABILITY_THRESHOLD) {
-                    isModeActive = false;
-                    stabilityCounter = 0;
-                    startCaptureAndIdentify();
-                }
-            } else {
-                stabilityCounter = 0;
             }
             requestAnimationFrame(detectFrame);
         }
@@ -210,7 +196,5 @@
     </script>
 </body>
 </html>
-
-
 
 
