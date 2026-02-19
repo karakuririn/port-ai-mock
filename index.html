@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-    <title>AI判定プロトタイプ v14.7</title>
+    <title>v1.0：港湾作業支援システム デモ</title>
     <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@latest/dist/tf.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/@teachablemachine/image@latest/dist/teachablemachine-image.min.js"></script>
     <script src="https://cdn.tailwindcss.com"></script>
@@ -11,21 +11,23 @@
         .flash-effect { animation: flash 0.1s ease-out; }
         @keyframes flash { from { background: white; opacity: 0.8; } to { background: transparent; opacity: 0; } }
         .camera-grid { background-image: radial-gradient(rgba(0, 0, 0, 0.05) 1px, transparent 1px); background-size: 30px 30px; }
+        .btn-glow { box-shadow: 0 0 20px rgba(37, 99, 235, 0.5); }
     </style>
 </head>
 <body class="bg-white h-screen flex flex-col overflow-hidden font-sans select-none text-slate-800 transition-colors duration-300">
 
     <div id="top-panel" class="h-[30%] bg-white flex flex-col relative z-20 border-b border-slate-200">
-        <div class="px-4 py-2 border-b border-slate-100 flex justify-between items-center text-[9px] text-slate-400 font-bold uppercase">
-            <span>v14.7 Retrained Model Active</span>
+        <div class="px-4 py-2 border-b border-slate-100 flex justify-between items-center text-[9px] text-slate-400 font-bold uppercase tracking-widest">
+            <span>System: v1.0 Port Operations Support</span>
             <div id="ai-heartbeat" class="w-2 h-2 rounded-full bg-blue-500 animate-pulse"></div>
         </div>
 
         <div id="view-process" class="flex-1 flex flex-col items-center justify-center p-4">
-            <h1 id="main-status" class="text-2xl font-black text-slate-800 italic uppercase">Fast Scanning</h1>
-            <p id="sub-status" class="text-[9px] text-blue-500 font-bold uppercase mt-1 tracking-widest">Target: Smartphone (High Sensitivity)</p>
-            <button id="btn-trigger" class="hidden mt-6 bg-slate-800 text-white text-xs font-bold py-3 px-10 rounded-full shadow-lg active:scale-95 transition-all">
-                Start Inspection
+            <h1 id="main-status" class="text-2xl font-black text-slate-800 italic uppercase tracking-tighter">信号待機中</h1>
+            <p id="sub-status" class="text-[9px] text-slate-500 font-bold uppercase mt-1 tracking-widest">マキシブレーキ信号(J1939)の受信を待っています</p>
+            
+            <button id="btn-maxibrake" class="hidden mt-6 bg-blue-600 text-white text-sm font-black py-4 px-12 rounded-full btn-glow active:scale-95 transition-all uppercase tracking-widest">
+                マキシブレーキON
             </button>
         </div>
 
@@ -33,10 +35,10 @@
             <div class="flex flex-col items-center text-center text-white">
                 <span class="text-[10px] font-bold tracking-[0.5em] mb-1 opacity-80 uppercase italic">Analysis Result</span>
                 <div id="res-title" class="text-7xl font-black italic tracking-tighter leading-none mb-2">OK</div>
-                <div id="res-desc" class="text-sm font-bold mt-2 border-t border-white/20 pt-2 w-full uppercase">状態正常</div>
+                <div id="res-desc" class="text-sm font-bold mt-2 border-t border-white/20 pt-2 w-full uppercase leading-relaxed">状態正常</div>
             </div>
-            <button id="btn-confirm" class="mt-8 bg-white/90 text-slate-900 font-black py-4 px-20 rounded-full shadow-2xl text-xs uppercase">
-                Reset
+            <button id="btn-reset" class="mt-8 bg-white/90 text-slate-900 font-black py-4 px-20 rounded-full shadow-2xl text-xs uppercase tracking-widest">
+                信号待機へ戻る
             </button>
         </div>
     </div>
@@ -45,54 +47,62 @@
         <video id="webcam" class="absolute inset-0 w-full h-full object-cover" autoplay playsinline muted></video>
         <canvas id="overlay" class="absolute inset-0 w-full h-full object-cover"></canvas>
         <div id="shutter-overlay" class="absolute inset-0 pointer-events-none"></div>
-        <div id="photo-container" class="absolute bottom-0 left-0 right-0 h-24 bg-gradient-to-t from-white/90 to-transparent p-4 flex gap-2 overflow-x-auto items-end"></div>
+        
+        <div id="photo-container" class="absolute bottom-0 left-0 right-0 h-24 bg-gradient-to-t from-black/50 to-transparent p-4 flex gap-2 overflow-x-auto items-end"></div>
     </div>
 
     <script type="module">
         import { ObjectDetector, FilesetResolver } from "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.3";
 
-        // 最新の学習済みURLを反映
+        // 設定値
         const TM_MODEL_URL = "https://teachablemachine.withgoogle.com/models/zwVH7-aAn/"; 
         const TARGET_CLASSES = ["cell phone", "mobile phone"];
+        const LERP_FACTOR = 0.2; // モーフィングの滑らかさ
+        const CONFIDENCE_THRESHOLD = 0.8; // v14.7の判定ロジックを継承
 
-        const body = document.body;
-        const topPanel = document.getElementById('top-panel');
-        const viewResult = document.getElementById('view-result');
-        const viewProcess = document.getElementById('view-process');
-        const mainStatus = document.getElementById('main-status');
-        const resTitle = document.getElementById('res-title');
-        const resDesc = document.getElementById('res-desc');
-        const btnTrigger = document.getElementById('btn-trigger');
-        const video = document.getElementById('webcam');
-        const overlay = document.getElementById('overlay');
-        const shutterOverlay = document.getElementById('shutter-overlay');
-        const photoContainer = document.getElementById('photo-container');
+        // 要素取得
+        const body = document.body, topPanel = document.getElementById('top-panel');
+        const viewResult = document.getElementById('view-result'), viewProcess = document.getElementById('view-process');
+        const mainStatus = document.getElementById('main-status'), subStatus = document.getElementById('sub-status');
+        const resTitle = document.getElementById('res-title'), resDesc = document.getElementById('res-desc');
+        const btnMaxiBrake = document.getElementById('btn-maxibrake'), btnReset = document.getElementById('btn-reset');
+        const video = document.getElementById('webcam'), overlay = document.getElementById('overlay');
+        const shutterOverlay = document.getElementById('shutter-overlay'), photoContainer = document.getElementById('photo-container');
 
         let objectDetector, identificationModel;
         let isModeActive = false, isCapturing = false;
-        let currentBox = { x: 0, y: 0, w: 0, h: 0 };
-        let lastConfidence = 0;
+        let currentBox = { x: 0, y: 0, w: 200, h: 200 }; // 初期枠サイズ
+        let centerBox = { x: 0, y: 0, w: 200, h: 200 };
 
         async function init() {
             try {
                 const vision = await FilesetResolver.forVisionTasks("https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.3/wasm");
                 objectDetector = await ObjectDetector.createFromOptions(vision, {
                     baseOptions: { modelAssetPath: "https://storage.googleapis.com/mediapipe-models/object_detector/efficientdet_lite0/float16/1/efficientdet_lite0.tflite", delegate: "GPU" },
-                    scoreThreshold: 0.2, // 高感度設定
-                    runningMode: "VIDEO"
+                    scoreThreshold: 0.25, runningMode: "VIDEO"
                 });
                 if (TM_MODEL_URL) identificationModel = await tmImage.load(TM_MODEL_URL + "model.json", TM_MODEL_URL + "metadata.json");
 
                 const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" } });
                 video.srcObject = stream;
-                video.onloadedmetadata = () => { btnTrigger.classList.remove('hidden'); detectFrame(); };
-            } catch (e) { mainStatus.innerText = "AI ERROR"; }
+                video.onloadedmetadata = () => {
+                    // 画面中央の位置を計算
+                    centerBox.x = (video.videoWidth - 200) / 2;
+                    centerBox.y = (video.videoHeight - 200) / 2;
+                    currentBox = { ...centerBox };
+                    btnMaxiBrake.classList.remove('hidden'); 
+                    detectFrame(); 
+                };
+            } catch (e) { mainStatus.innerText = "SYSTEM ERROR"; }
         }
 
-        btnTrigger.addEventListener('click', () => {
-            isModeActive = true; btnTrigger.classList.add('hidden');
+        // マキシブレーキON（スキャン開始トリガー）
+        btnMaxiBrake.addEventListener('click', () => {
+            isModeActive = true;
+            btnMaxiBrake.classList.add('hidden');
             mainStatus.innerText = "SCANNING";
-            mainStatus.className = "text-3xl font-black text-blue-600 animate-pulse italic";
+            mainStatus.className = "text-3xl font-black text-blue-600 italic animate-pulse";
+            subStatus.innerText = "ターゲットを捕捉してください";
         });
 
         async function detectFrame() {
@@ -100,95 +110,125 @@
             overlay.width = video.videoWidth; overlay.height = video.videoHeight;
             const ctx = overlay.getContext('2d'); ctx.clearRect(0, 0, overlay.width, overlay.height);
 
-            if (isCapturing) { requestAnimationFrame(detectFrame); return; }
+            if (isCapturing) {
+                // 撮影中は枠を赤色で固定表示
+                drawBox(ctx, currentBox.x, currentBox.y, currentBox.w, currentBox.h, "#ef4444", 8, "IDENTIFYING...");
+                requestAnimationFrame(detectFrame);
+                return;
+            }
 
             const detections = objectDetector.detectForVideo(video, Date.now());
             const phoneDetection = detections.detections.find(d => TARGET_CLASSES.includes(d.categories[0].categoryName.toLowerCase()));
 
-            if (phoneDetection) {
-                const target = { x: phoneDetection.boundingBox.originX, y: phoneDetection.boundingBox.originY, w: phoneDetection.boundingBox.width, h: phoneDetection.boundingBox.height };
-                const lerp = 0.25;
-                currentBox.x += (target.x - currentBox.x) * lerp;
-                currentBox.y += (target.y - currentBox.y) * lerp;
-                currentBox.w += (target.w - currentBox.w) * lerp;
-                currentBox.h += (target.h - currentBox.h) * lerp;
-                
-                lastConfidence = Math.round(phoneDetection.categories[0].score * 100);
-                drawBox(ctx, currentBox.x, currentBox.y, currentBox.w, currentBox.h, "#2563eb", 4, `SMARTPHONE ${lastConfidence}%`);
+            let target = { ...centerBox };
+            let hasTarget = false;
+            let score = 0;
 
-                if (isModeActive && lastConfidence > 45) {
-                    if (Math.abs(target.x - currentBox.x) < 80) {
-                        isModeActive = false;
-                        startCaptureAndIdentify();
-                    }
+            if (phoneDetection) {
+                target = { x: phoneDetection.boundingBox.originX, y: phoneDetection.boundingBox.originY, w: phoneDetection.boundingBox.width, h: phoneDetection.boundingBox.height };
+                score = phoneDetection.categories[0].score;
+                hasTarget = true;
+            }
+
+            // モーフィング処理（Lerp）
+            currentBox.x += (target.x - currentBox.x) * LERP_FACTOR;
+            currentBox.y += (target.y - currentBox.y) * LERP_FACTOR;
+            currentBox.w += (target.w - currentBox.w) * LERP_FACTOR;
+            currentBox.h += (target.h - currentBox.h) * LERP_FACTOR;
+
+            const boxColor = hasTarget ? "#2563eb" : "rgba(37, 99, 235, 0.3)";
+            const lineWidth = hasTarget ? 4 : 2;
+            const label = hasTarget ? `LOCK ON: ${Math.round(score * 100)}%` : null;
+
+            drawBox(ctx, currentBox.x, currentBox.y, currentBox.w, currentBox.h, boxColor, lineWidth, label);
+
+            // トリガー判定：マキシブレーキON状態 ＆ ターゲット捕捉 ＆ 動きが安定
+            if (isModeActive && hasTarget && score > 0.5) {
+                const diff = Math.abs(target.x - currentBox.x);
+                if (diff < 40) { // 枠が吸着した
+                    isModeActive = false;
+                    startCaptureAndIdentify();
                 }
             }
+
             requestAnimationFrame(detectFrame);
         }
 
         async function startCaptureAndIdentify() {
             isCapturing = true;
-            mainStatus.innerText = "IDENTIFYING";
+            mainStatus.innerText = "AUTHENTICATING";
+            mainStatus.className = "text-3xl font-black text-slate-900 italic";
             
             const tempCanvas = document.createElement('canvas');
             tempCanvas.width = 224; tempCanvas.height = 224;
             tempCanvas.getContext('2d').drawImage(video, currentBox.x, currentBox.y, currentBox.w, currentBox.h, 0, 0, 224, 224);
 
-            let isOk = true, score = 0;
+            let isOk = false, finalScore = 0;
             if (identificationModel) {
                 const prediction = await identificationModel.predict(tempCanvas);
-                // Class 1 (OK) のスコアで判定
-                isOk = prediction[0].probability > 0.8; 
-                score = Math.round(prediction[isOk ? 0 : 1].probability * 100);
+                isOk = prediction[0].probability > CONFIDENCE_THRESHOLD; 
+                finalScore = Math.round(prediction[isOk ? 0 : 1].probability * 100);
             }
 
+            // 連写エフェクト
             for (let i = 0; i < 10; i++) {
                 shutterOverlay.classList.remove('flash-effect'); void shutterOverlay.offsetWidth;
                 shutterOverlay.classList.add('flash-effect');
-                addThumbnail(); await new Promise(r => setTimeout(r, 60));
+                addThumbnail();
+                await new Promise(r => setTimeout(r, 60));
             }
-            isCapturing = false; showResult(isOk, score);
+            
+            isCapturing = false;
+            showResult(isOk, finalScore);
         }
 
         function showResult(isOk, score) {
             viewProcess.classList.add('hidden');
             viewResult.classList.remove('hidden');
             if (isOk) {
-                body.className = "bg-green-500 h-screen flex flex-col overflow-hidden font-sans select-none text-white transition-colors duration-300";
-                topPanel.className = "h-[30%] bg-green-500 flex flex-col relative z-20 border-none transition-colors duration-500";
-                resTitle.innerText = "OK"; resDesc.innerText = `状態正常 (判定率: ${score}%)`;
-                if(navigator.vibrate) navigator.vibrate(200); // 1回振動
+                body.className = "bg-green-600 h-screen flex flex-col overflow-hidden transition-colors duration-300";
+                topPanel.className = "h-[30%] bg-green-600 flex flex-col relative z-20 border-none transition-colors duration-500";
+                resTitle.innerText = "PASSED"; resDesc.innerText = `検査適合: ${score}% 一致`;
+                if(navigator.vibrate) navigator.vibrate([100, 50, 100]); 
             } else {
-                body.className = "bg-red-600 h-screen flex flex-col overflow-hidden font-sans select-none text-yellow-400 transition-colors duration-300";
-                topPanel.className = "h-[30%] bg-red-600 flex flex-col relative z-20 border-none transition-colors duration-500";
-                resTitle.innerText = "NG"; resDesc.innerText = "状態を確認してください";
-                if(navigator.vibrate) navigator.vibrate([200, 100, 200, 100, 200]); // 3回振動
+                body.className = "bg-red-700 h-screen flex flex-col overflow-hidden transition-colors duration-300";
+                topPanel.className = "h-[30%] bg-red-700 flex flex-col relative z-20 border-none transition-colors duration-500";
+                resTitle.innerText = "FAILED"; resDesc.innerText = `不適合: 状態を再確認してください`;
+                if(navigator.vibrate) navigator.vibrate([300, 100, 300]); 
             }
         }
 
         function drawBox(ctx, x, y, w, h, color, lineWidth, text) {
             ctx.strokeStyle = color; ctx.lineWidth = lineWidth; ctx.strokeRect(x, y, w, h);
-            const c = 15; ctx.lineWidth = lineWidth + 2; ctx.beginPath();
+            const c = 20; ctx.lineWidth = lineWidth + 2; ctx.beginPath();
             ctx.moveTo(x, y+c); ctx.lineTo(x, y); ctx.lineTo(x+c, y);
             ctx.moveTo(x+w-c, y); ctx.lineTo(x+w, y); ctx.lineTo(x+w, y+c);
             ctx.moveTo(x+w, y+h-c); ctx.lineTo(x+w, y+h); ctx.lineTo(x+w-c, y+h);
             ctx.moveTo(x+c, y+h); ctx.lineTo(x, y+h); ctx.lineTo(x, y+h-c); ctx.stroke();
-            if (text) { ctx.fillStyle = color; ctx.font = "bold 12px monospace"; ctx.fillText(`> ${text}`, x, y - 8); }
+            if (text) {
+                ctx.fillStyle = color; ctx.font = "bold 10px monospace";
+                const txtW = ctx.measureText(text).width;
+                ctx.fillRect(x, y-15, txtW + 10, 15);
+                ctx.fillStyle = "white"; ctx.fillText(text, x + 5, y - 4);
+            }
         }
 
         function addThumbnail() {
-            const cvs = document.createElement('canvas'); cvs.width = 120; cvs.height = 90;
-            cvs.getContext('2d').drawImage(video, 0, 0, 120, 90);
+            const cvs = document.createElement('canvas'); cvs.width = 120; cvs.height = 120;
+            cvs.getContext('2d').drawImage(video, currentBox.x, currentBox.y, currentBox.w, currentBox.h, 0, 0, 120, 120);
             const img = document.createElement('img'); img.src = cvs.toDataURL('image/jpeg');
-            img.className = "h-20 w-20 object-cover border-2 border-white rounded shadow-md";
+            img.className = "h-16 w-16 object-cover border-2 border-white/80 rounded-sm shadow-lg";
             photoContainer.insertBefore(img, photoContainer.firstChild);
         }
 
-        document.getElementById('btn-confirm').addEventListener('click', () => {
+        btnReset.addEventListener('click', () => {
             viewResult.classList.add('hidden'); viewProcess.classList.remove('hidden');
-            body.className = "bg-white h-screen flex flex-col overflow-hidden font-sans select-none text-slate-800 transition-colors duration-300";
+            body.className = "bg-white h-screen flex flex-col overflow-hidden transition-colors duration-300";
             topPanel.className = "h-[30%] bg-white flex flex-col relative z-20 border-b border-slate-200 transition-colors duration-500";
-            mainStatus.innerText = "WAITING FOR SMARTPHONE"; btnTrigger.classList.remove('hidden'); 
+            mainStatus.innerText = "信号待機中"; 
+            mainStatus.className = "text-2xl font-black text-slate-800 italic uppercase tracking-tighter";
+            subStatus.innerText = "マキシブレーキ信号(J1939)の受信を待っています";
+            btnMaxiBrake.classList.remove('hidden'); 
             photoContainer.innerHTML = ''; isModeActive = false; isCapturing = false;
         });
 
@@ -196,5 +236,3 @@
     </script>
 </body>
 </html>
-
-
