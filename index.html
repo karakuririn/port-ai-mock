@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-    <title>AI判定プロトタイプ v14.5</title>
+    <title>AI判定プロトタイプ v14.7</title>
     <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@latest/dist/tf.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/@teachablemachine/image@latest/dist/teachablemachine-image.min.js"></script>
     <script src="https://cdn.tailwindcss.com"></script>
@@ -17,13 +17,13 @@
 
     <div id="top-panel" class="h-[30%] bg-white flex flex-col relative z-20 border-b border-slate-200">
         <div class="px-4 py-2 border-b border-slate-100 flex justify-between items-center text-[9px] text-slate-400 font-bold uppercase">
-            <span>v14.5 Smartphone Lock-on Active</span>
+            <span>v14.7 Retrained Model Active</span>
             <div id="ai-heartbeat" class="w-2 h-2 rounded-full bg-blue-500 animate-pulse"></div>
         </div>
 
         <div id="view-process" class="flex-1 flex flex-col items-center justify-center p-4">
-            <h1 id="main-status" class="text-2xl font-black text-slate-800 italic uppercase">Waiting for Smartphone</h1>
-            <p id="sub-status" class="text-[9px] text-blue-500 font-bold uppercase mt-1 tracking-widest">Target: Smartphone Only</p>
+            <h1 id="main-status" class="text-2xl font-black text-slate-800 italic uppercase">Fast Scanning</h1>
+            <p id="sub-status" class="text-[9px] text-blue-500 font-bold uppercase mt-1 tracking-widest">Target: Smartphone (High Sensitivity)</p>
             <button id="btn-trigger" class="hidden mt-6 bg-slate-800 text-white text-xs font-bold py-3 px-10 rounded-full shadow-lg active:scale-95 transition-all">
                 Start Inspection
             </button>
@@ -31,12 +31,12 @@
 
         <div id="view-result" class="hidden absolute inset-0 flex flex-col items-center justify-center p-2 animate-fade-in transition-colors duration-500">
             <div class="flex flex-col items-center text-center text-white">
-                <span class="text-[10px] font-bold tracking-[0.5em] mb-1 opacity-80 uppercase italic">Analysis Complete</span>
+                <span class="text-[10px] font-bold tracking-[0.5em] mb-1 opacity-80 uppercase italic">Analysis Result</span>
                 <div id="res-title" class="text-7xl font-black italic tracking-tighter leading-none mb-2">OK</div>
                 <div id="res-desc" class="text-sm font-bold mt-2 border-t border-white/20 pt-2 w-full uppercase">状態正常</div>
             </div>
             <button id="btn-confirm" class="mt-8 bg-white/90 text-slate-900 font-black py-4 px-20 rounded-full shadow-2xl text-xs uppercase">
-                Next Inspection
+                Reset
             </button>
         </div>
     </div>
@@ -51,9 +51,8 @@
     <script type="module">
         import { ObjectDetector, FilesetResolver } from "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.3";
 
+        // 最新の学習済みURLを反映
         const TM_MODEL_URL = "https://teachablemachine.withgoogle.com/models/zwVH7-aAn/"; 
-        
-        // ★スマートフォンに関連するラベルのみに限定
         const TARGET_CLASSES = ["cell phone", "mobile phone"];
 
         const body = document.body;
@@ -79,7 +78,8 @@
                 const vision = await FilesetResolver.forVisionTasks("https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.3/wasm");
                 objectDetector = await ObjectDetector.createFromOptions(vision, {
                     baseOptions: { modelAssetPath: "https://storage.googleapis.com/mediapipe-models/object_detector/efficientdet_lite0/float16/1/efficientdet_lite0.tflite", delegate: "GPU" },
-                    scoreThreshold: 0.3, runningMode: "VIDEO"
+                    scoreThreshold: 0.2, // 高感度設定
+                    runningMode: "VIDEO"
                 });
                 if (TM_MODEL_URL) identificationModel = await tmImage.load(TM_MODEL_URL + "model.json", TM_MODEL_URL + "metadata.json");
 
@@ -103,20 +103,10 @@
             if (isCapturing) { requestAnimationFrame(detectFrame); return; }
 
             const detections = objectDetector.detectForVideo(video, Date.now());
-            
-            // ★スマートフォンだけを必死に探す
-            const phoneDetection = detections.detections.find(d => 
-                TARGET_CLASSES.includes(d.categories[0].categoryName.toLowerCase())
-            );
+            const phoneDetection = detections.detections.find(d => TARGET_CLASSES.includes(d.categories[0].categoryName.toLowerCase()));
 
             if (phoneDetection) {
-                const target = { 
-                    x: phoneDetection.boundingBox.originX, 
-                    y: phoneDetection.boundingBox.originY, 
-                    w: phoneDetection.boundingBox.width, 
-                    h: phoneDetection.boundingBox.height 
-                };
-                
+                const target = { x: phoneDetection.boundingBox.originX, y: phoneDetection.boundingBox.originY, w: phoneDetection.boundingBox.width, h: phoneDetection.boundingBox.height };
                 const lerp = 0.25;
                 currentBox.x += (target.x - currentBox.x) * lerp;
                 currentBox.y += (target.y - currentBox.y) * lerp;
@@ -124,21 +114,15 @@
                 currentBox.h += (target.h - currentBox.h) * lerp;
                 
                 lastConfidence = Math.round(phoneDetection.categories[0].score * 100);
-                
-                // 枠の描画
                 drawBox(ctx, currentBox.x, currentBox.y, currentBox.w, currentBox.h, "#2563eb", 4, `SMARTPHONE ${lastConfidence}%`);
 
-                if (isModeActive && lastConfidence > 65) {
-                    if (Math.abs(target.x - currentBox.x) < 40) {
+                if (isModeActive && lastConfidence > 45) {
+                    if (Math.abs(target.x - currentBox.x) < 80) {
                         isModeActive = false;
                         startCaptureAndIdentify();
                     }
                 }
-            } else {
-                // 見つからない時は枠をリセット
-                currentBox = { x: (overlay.width-200)/2, y: (overlay.height-200)/2, w: 200, h: 200 };
             }
-
             requestAnimationFrame(detectFrame);
         }
 
@@ -153,6 +137,7 @@
             let isOk = true, score = 0;
             if (identificationModel) {
                 const prediction = await identificationModel.predict(tempCanvas);
+                // Class 1 (OK) のスコアで判定
                 isOk = prediction[0].probability > 0.5; 
                 score = Math.round(prediction[isOk ? 0 : 1].probability * 100);
             }
@@ -160,7 +145,7 @@
             for (let i = 0; i < 10; i++) {
                 shutterOverlay.classList.remove('flash-effect'); void shutterOverlay.offsetWidth;
                 shutterOverlay.classList.add('flash-effect');
-                addThumbnail(); await new Promise(r => setTimeout(r, 80));
+                addThumbnail(); await new Promise(r => setTimeout(r, 60));
             }
             isCapturing = false; showResult(isOk, score);
         }
@@ -172,12 +157,12 @@
                 body.className = "bg-green-500 h-screen flex flex-col overflow-hidden font-sans select-none text-white transition-colors duration-300";
                 topPanel.className = "h-[30%] bg-green-500 flex flex-col relative z-20 border-none transition-colors duration-500";
                 resTitle.innerText = "OK"; resDesc.innerText = `状態正常 (判定率: ${score}%)`;
-                if(navigator.vibrate) navigator.vibrate(200);
+                if(navigator.vibrate) navigator.vibrate(200); // 1回振動
             } else {
                 body.className = "bg-red-600 h-screen flex flex-col overflow-hidden font-sans select-none text-yellow-400 transition-colors duration-300";
                 topPanel.className = "h-[30%] bg-red-600 flex flex-col relative z-20 border-none transition-colors duration-500";
                 resTitle.innerText = "NG"; resDesc.innerText = "状態を確認してください";
-                if(navigator.vibrate) navigator.vibrate([200, 100, 200, 100, 200]);
+                if(navigator.vibrate) navigator.vibrate([200, 100, 200, 100, 200]); // 3回振動
             }
         }
 
