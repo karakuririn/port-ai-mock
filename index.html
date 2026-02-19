@@ -3,55 +3,47 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-    <title>港湾AI自動検査システム v10_MediaPipe_Raw</title>
+    <title>港湾AI検査システム v13_Identification_Bridge</title>
     <script src="https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.3"></script>
     <script src="https://cdn.tailwindcss.com"></script>
     <style>
         .flash-effect { animation: flash 0.1s ease-out; }
         @keyframes flash { from { background: white; opacity: 0.8; } to { background: transparent; opacity: 0; } }
-        .pb-safe { padding-bottom: env(safe-area-inset-bottom); }
+        .camera-grid { background-image: radial-gradient(rgba(37, 99, 235, 0.1) 1px, transparent 1px); background-size: 30px 30px; }
     </style>
 </head>
-<body class="bg-gray-900 h-screen flex flex-col overflow-hidden font-sans select-none">
+<body class="bg-black h-screen flex flex-col overflow-hidden font-mono select-none">
 
-    <div id="top-panel" class="h-[30%] bg-white flex flex-col relative z-20 shadow-lg transition-colors duration-500">
-        <div class="absolute top-2 left-3 flex gap-2 z-30">
-            <div id="ble-badge" class="px-2 py-0.5 rounded text-[10px] font-bold border flex items-center gap-1 bg-white/90 text-blue-600 border-blue-200 transition-all">
-                <span class="w-1.5 h-1.5 rounded-full bg-blue-500 animate-pulse"></span> BLE接続：確立済み
-            </div>
+    <div id="top-panel" class="h-[30%] bg-slate-900 border-b border-blue-500/30 flex flex-col relative z-20 transition-colors duration-500">
+        <div class="px-4 py-2 border-b border-white/10 flex justify-between items-center">
+            <span class="text-[9px] text-blue-400 font-bold tracking-widest uppercase">Stage 2: Identification Enabled</span>
+            <div id="ble-badge" class="px-2 py-0.5 rounded text-[9px] bg-blue-500/20 text-blue-400 border border-blue-500/50">J1939: READY</div>
         </div>
 
         <div id="view-process" class="flex-1 flex flex-col items-center justify-center p-4">
-            <div class="text-center mt-4">
-                <h1 id="main-status" class="text-2xl font-black text-gray-800 tracking-tight">AI準備中...</h1>
-                <p id="sub-status" class="text-xs text-gray-400 font-bold mt-1">最新の解析モデルをロードしています</p>
+            <div class="text-center">
+                <h1 id="main-status" class="text-3xl font-black text-white tracking-tighter italic">WAITING</h1>
+                <p id="sub-status" class="text-[10px] text-blue-500/70 font-bold mt-1 uppercase">Ready for tractor-head sync</p>
             </div>
-            <button id="btn-trigger" class="hidden mt-4 bg-slate-800 hover:bg-slate-700 text-white text-sm font-bold py-3 px-8 rounded-full shadow-lg active:scale-95 transition-transform flex items-center gap-2">
-                CAN信号受信開始
-            </button>
+            <button id="btn-trigger" class="hidden mt-6 bg-blue-600 text-white text-xs font-black py-3 px-10 rounded-sm border-b-4 border-blue-800 uppercase tracking-widest">Start Scanning</button>
         </div>
 
-        <div id="view-result" class="hidden absolute inset-0 flex flex-col items-center justify-center p-2 animate-fade-in">
-            <div class="flex items-center gap-4">
-                <span id="res-icon" class="text-5xl bg-white/20 rounded-full p-2">✅</span>
-                <div class="text-left">
-                    <div id="res-title" class="text-5xl font-black text-white tracking-tighter leading-none">OK</div>
-                    <div id="res-desc" class="text-xs text-white/80 font-bold uppercase tracking-widest mt-1">状態正常</div>
-                </div>
+        <div id="view-result" class="hidden absolute inset-0 flex flex-col items-center justify-center p-2 animate-fade-in bg-blue-600">
+            <div class="flex flex-col items-center text-white">
+                <span class="text-[10px] font-bold tracking-[0.5em] mb-1 opacity-80">IDENTIFICATION RESULT</span>
+                <div id="res-title" class="text-5xl font-black italic tracking-tighter leading-none mb-2">TARGET_ID_01</div>
+                <div id="res-id-detail" class="text-[10px] font-bold bg-black/20 px-4 py-1 rounded-full mb-3">CONFIDENCE: --%</div>
+                <div id="res-desc" class="text-xs font-bold border-t border-white/30 pt-2 w-full text-center">SYSTEM_STATUS_NORMAL</div>
             </div>
-            <button id="btn-confirm" class="mt-4 bg-white text-gray-900 font-black py-2 px-10 rounded-full shadow-lg active:scale-95 transition-transform text-sm border-b-4 border-gray-300 active:border-b-0 active:translate-y-0.5">
-                確認完了（次へ）
-            </button>
+            <button id="btn-confirm" class="mt-6 bg-white/20 text-white font-bold py-2 px-12 rounded-full border border-white/50 text-xs uppercase">Confirm & Reset</button>
         </div>
     </div>
 
-    <div class="h-[70%] relative bg-black overflow-hidden">
-        <video id="webcam" class="absolute inset-0 w-full h-full object-cover opacity-80" autoplay playsinline muted></video>
+    <div class="h-[70%] relative bg-black overflow-hidden camera-grid">
+        <video id="webcam" class="absolute inset-0 w-full h-full object-cover opacity-60" autoplay playsinline muted></video>
         <canvas id="overlay" class="absolute inset-0 w-full h-full object-cover"></canvas>
         <div id="shutter-overlay" class="absolute inset-0 pointer-events-none"></div>
-        <div id="photo-container" class="absolute bottom-0 left-0 right-0 h-24 bg-gradient-to-t from-black/90 to-transparent p-2 pb-safe flex gap-2 overflow-x-auto items-end opacity-50 transition-opacity duration-300">
-            <div class="text-[9px] text-gray-500 font-bold w-full text-center mb-2">自動連写された画像がここに表示されます</div>
-        </div>
+        <div id="photo-container" class="absolute bottom-0 left-0 right-0 h-24 bg-gradient-to-t from-black to-transparent p-4 flex gap-2 overflow-x-auto items-end"></div>
     </div>
 
     <script>
@@ -65,134 +57,75 @@
         const subStatus = document.getElementById('sub-status');
         const btnTrigger = document.getElementById('btn-trigger');
         const btnConfirm = document.getElementById('btn-confirm');
-        const bleBadge = document.getElementById('ble-badge');
-        const resTitle = document.getElementById('res-title');
-        const resIcon = document.getElementById('res-icon');
-        const resDesc = document.getElementById('res-desc');
         const video = document.getElementById('webcam');
         const overlay = document.getElementById('overlay');
         const shutterOverlay = document.getElementById('shutter-overlay');
         const photoContainer = document.getElementById('photo-container');
+        const resIdDetail = document.getElementById('res-id-detail');
 
         let isModeActive = false, isCapturing = false;
-        let audioCtx;
-        
-        let currentBox = { x: 0, y: 0, w: 0, h: 0, visible: false };
+        let currentBox = { x: 0, y: 0, w: 0, h: 0 };
         let centerBox = { x: 0, y: 0, w: 200, h: 200 };
-
-        function playFeedbackSound(type) {
-            if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-            const oscillator = audioCtx.createOscillator();
-            const gainNode = audioCtx.createGain();
-            oscillator.connect(gainNode); gainNode.connect(audioCtx.destination);
-            if (type === 'OK') {
-                oscillator.type = 'sine'; oscillator.frequency.setValueAtTime(880, audioCtx.currentTime);
-                gainNode.gain.setValueAtTime(0.1, audioCtx.currentTime); oscillator.start(); oscillator.stop(audioCtx.currentTime + 0.2);
-            } else if (type === 'NG') {
-                oscillator.type = 'sawtooth'; oscillator.frequency.setValueAtTime(220, audioCtx.currentTime);
-                gainNode.gain.setValueAtTime(0.1, audioCtx.currentTime); oscillator.start(); oscillator.stop(audioCtx.currentTime + 0.5);
-                if (navigator.vibrate) navigator.vibrate([200, 100, 200, 100, 500]);
-            }
-        }
+        let lastIdentifiedObject = ""; // 識別した結果を保持
+        let lastConfidence = 0;
 
         async function init() {
             try {
-                // MediaPipeエンジンの初期化
                 const vision = await FilesetResolver.forVisionTasks("https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.3/wasm");
                 objectDetector = await ObjectDetector.createFromOptions(vision, {
-                    baseOptions: {
-                        modelAssetPath: `https://storage.googleapis.com/mediapipe-models/object_detector/efficientdet_lite0/float16/1/efficientdet_lite0.tflite`,
-                        delegate: "GPU"
-                    },
-                    scoreThreshold: 0.3,
-                    runningMode: "VIDEO"
+                    baseOptions: { modelAssetPath: `https://storage.googleapis.com/mediapipe-models/object_detector/efficientdet_lite0/float16/1/efficientdet_lite0.tflite`, delegate: "GPU" },
+                    scoreThreshold: 0.3, runningMode: "VIDEO"
                 });
-
-                const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" }, audio: false });
+                const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" } });
                 video.srcObject = stream;
-                video.onloadedmetadata = () => {
-                    mainStatus.innerText = "信号待機中";
-                    subStatus.innerText = "マキシブレーキ信号(J1939)の受信を待っています";
-                    btnTrigger.classList.remove('hidden');
-                    centerBox.x = (video.videoWidth - 200) / 2;
-                    centerBox.y = (video.videoHeight - 200) / 2;
-                    currentBox = { ...centerBox, visible: true };
-                    detectFrame();
-                };
-            } catch (e) {
-                mainStatus.innerText = "起動エラー";
-                subStatus.innerText = "カメラの許可を確認してください";
-                console.error(e);
-            }
+                video.onloadedmetadata = () => { btnTrigger.classList.remove('hidden'); detectFrame(); };
+            } catch (e) { mainStatus.innerText = "INIT ERROR"; }
         }
 
         btnTrigger.addEventListener('click', () => {
-            if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-            isModeActive = true;
-            btnTrigger.classList.add('hidden');
-            mainStatus.innerText = "作業確認中";
-            mainStatus.className = "text-3xl font-black text-blue-600 animate-pulse tracking-tight";
-            subStatus.innerText = "対象をスキャン中：カメラを固定してください";
-            video.classList.remove('opacity-80');
-            photoContainer.classList.remove('opacity-50');
-            photoContainer.innerHTML = '';
+            isModeActive = true; btnTrigger.classList.add('hidden');
+            mainStatus.innerText = "SCANNING";
+            mainStatus.className = "text-3xl font-black text-blue-500 italic animate-pulse";
+            subStatus.innerText = "Target acquisition in progress";
         });
 
         async function detectFrame() {
             if (!video.videoWidth || !objectDetector) { requestAnimationFrame(detectFrame); return; }
-            
-            overlay.width = video.videoWidth; 
-            overlay.height = video.videoHeight;
-            const ctx = overlay.getContext('2d');
-            ctx.clearRect(0, 0, overlay.width, overlay.height);
-
-            centerBox.x = (overlay.width - 200) / 2;
-            centerBox.y = (overlay.height - 200) / 2;
+            overlay.width = video.videoWidth; overlay.height = video.videoHeight;
+            const ctx = overlay.getContext('2d'); ctx.clearRect(0, 0, overlay.width, overlay.height);
 
             if (isCapturing) {
-                drawBox(ctx, currentBox.x, currentBox.y, currentBox.w, currentBox.h, "#ef4444", 8, "CAPTURING...");
-                requestAnimationFrame(detectFrame);
-                return;
+                drawBox(ctx, currentBox.x, currentBox.y, currentBox.w, currentBox.h, "#ef4444", 6, "ANALYZING_ID...");
+                requestAnimationFrame(detectFrame); return;
             }
 
-            // MediaPipeでの検出実行
-            const startTimeMs = Date.now();
-            const detections = objectDetector.detectForVideo(video, startTimeMs);
-            
-            let target = { ...centerBox };
-            let hasTarget = false;
-            let score = 0;
-            let labelText = "SCANNING";
+            const detections = objectDetector.detectForVideo(video, Date.now());
+            let target = { ...centerBox }; let hasTarget = false; let score = 0; let labelText = "IDLE";
 
             if (detections.detections && detections.detections.length > 0) {
                 const best = detections.detections[0];
-                const rawLabel = best.categories[0].categoryName; // ラベル変換なし
+                const rawLabel = best.categories[0].categoryName;
+                target = { x: best.boundingBox.originX, y: best.boundingBox.originY, w: best.boundingBox.width, h: best.boundingBox.height };
+                hasTarget = true; score = best.categories[0].score;
+                labelText = `${rawLabel.toUpperCase()} :: ${Math.round(score * 100)}%`;
                 
-                target = { 
-                    x: best.boundingBox.originX, 
-                    y: best.boundingBox.originY, 
-                    w: best.boundingBox.width, 
-                    h: best.boundingBox.height 
-                };
-                hasTarget = true;
-                score = best.categories[0].score;
-                labelText = `${rawLabel.toUpperCase()} ${Math.round(score * 100)}%`;
+                // 識別情報の準備
+                lastIdentifiedObject = rawLabel.toUpperCase();
+                lastConfidence = Math.round(score * 98); // 識別シミュレーション
             }
 
-            const lerp = 0.2;
+            const lerp = 0.25;
             currentBox.x += (target.x - currentBox.x) * lerp;
             currentBox.y += (target.y - currentBox.y) * lerp;
             currentBox.w += (target.w - currentBox.w) * lerp;
             currentBox.h += (target.h - currentBox.h) * lerp;
 
-            const color = hasTarget ? "#2563eb" : "rgba(100, 200, 255, 0.4)";
-            const lineWidth = hasTarget ? 4 : 2;
-            
-            drawBox(ctx, currentBox.x, currentBox.y, currentBox.w, currentBox.h, color, lineWidth, hasTarget ? labelText : null);
+            const color = hasTarget ? "#3b82f6" : "rgba(255, 255, 255, 0.2)";
+            drawBox(ctx, currentBox.x, currentBox.y, currentBox.w, currentBox.h, color, hasTarget ? 4 : 1, hasTarget ? labelText : null);
 
             if (isModeActive && hasTarget && score > 0.6) {
-                const diff = Math.abs(target.x - currentBox.x) + Math.abs(target.w - currentBox.w);
-                if (diff < 50) {
+                const diff = Math.abs(target.x - currentBox.x);
+                if (diff < 30) {
                     isModeActive = false;
                     startBurstCapture();
                 }
@@ -200,82 +133,66 @@
             requestAnimationFrame(detectFrame);
         }
 
-        function drawBox(ctx, x, y, w, h, color, lineWidth, text) {
-            ctx.beginPath();
-            ctx.lineWidth = lineWidth;
-            ctx.strokeStyle = color;
-            ctx.rect(x, y, w, h);
-            ctx.stroke();
-
-            const cornerLen = 20;
-            ctx.lineWidth = lineWidth + 2;
-            ctx.beginPath();
-            ctx.moveTo(x, y + cornerLen); ctx.lineTo(x, y); ctx.lineTo(x + cornerLen, y);
-            ctx.moveTo(x + w - cornerLen, y); ctx.lineTo(x + w, y); ctx.lineTo(x + w, y + cornerLen);
-            ctx.moveTo(x + w, y + h - cornerLen); ctx.lineTo(x + w, y + h); ctx.lineTo(x + w - cornerLen, y + h);
-            ctx.moveTo(x + cornerLen, y + h); ctx.lineTo(x, y + h); ctx.lineTo(x, y + h - cornerLen);
-            ctx.stroke();
-
-            if (text) {
-                ctx.fillStyle = color;
-                ctx.font = "bold 14px sans-serif";
-                ctx.fillText(text, x, y - 10);
-            }
-        }
-
         async function startBurstCapture() {
             isCapturing = true;
-            mainStatus.innerText = "連写撮影中...";
-            mainStatus.className = "text-3xl font-black text-red-500 tracking-tight";
-            for (let i = 0; i < 10; i++) {
-                shutterOverlay.classList.remove('flash-effect');
-                void shutterOverlay.offsetWidth;
+            mainStatus.innerText = "IDENTIFYING";
+            mainStatus.className = "text-4xl font-black text-white italic animate-pulse";
+            
+            // 【重要】ここで識別処理（シミュレーション）を行う
+            await performIdentification();
+
+            for (let i = 0; i < 5; i++) {
+                shutterOverlay.classList.remove('flash-effect'); void shutterOverlay.offsetWidth;
                 shutterOverlay.classList.add('flash-effect');
-                addThumbnail(i);
-                await new Promise(r => setTimeout(r, 100));
+                addThumbnail(); await new Promise(r => setTimeout(r, 150));
             }
             isCapturing = false;
-            mainStatus.innerText = "AI判定中...";
-            mainStatus.className = "text-3xl font-black text-gray-800 tracking-tight";
-            setTimeout(showResult, 1000);
+            showResult();
         }
 
-        function addThumbnail(i) {
-            const cvs = document.createElement('canvas');
-            cvs.width = 160; cvs.height = 120;
-            cvs.getContext('2d').drawImage(video, 0, 0, 160, 120);
-            const img = document.createElement('img');
-            img.src = cvs.toDataURL('image/jpeg');
-            img.className = "h-full w-24 object-cover rounded border border-white/50 shadow-sm";
-            photoContainer.insertBefore(img, photoContainer.firstChild);
+        // 【新設】画像識別ロジックの「受け皿」
+        async function performIdentification() {
+            // 本来はここで Teachable Machine などのモデルを呼び出す
+            // 現在は 1.2秒の待機で「AIが計算している感」を演出
+            await new Promise(r => setTimeout(r, 1200));
         }
 
         function showResult() {
             viewProcess.classList.add('hidden');
             viewResult.classList.remove('hidden');
-            const isOk = Math.random() > 0.3;
-            if (isOk) {
-                playFeedbackSound('OK');
-                topPanel.className = "h-[30%] bg-green-500 flex flex-col relative z-20 shadow-lg transition-colors duration-500";
-                resTitle.innerText = "OK"; resIcon.innerText = "✅"; resDesc.innerText = "状態正常";
-            } else {
-                playFeedbackSound('NG');
-                topPanel.className = "h-[30%] bg-yellow-400 flex flex-col relative z-20 shadow-lg transition-colors duration-500 text-gray-900";
-                resTitle.innerText = "NG"; resIcon.innerText = "⚠️"; resDesc.innerText = "異常あり：再確認してください";
-            }
+            
+            // 識別結果を反映
+            document.getElementById('res-title').innerText = lastIdentifiedObject;
+            resIdDetail.innerText = `CONFIDENCE: ${lastConfidence}%`;
+            
+            const isOk = lastConfidence > 40; // 判定シミュレーション
+            viewResult.className = isOk ? 
+                "hidden absolute inset-0 flex flex-col items-center justify-center p-2 animate-fade-in bg-blue-600" : 
+                "hidden absolute inset-0 flex flex-col items-center justify-center p-2 animate-fade-in bg-red-600";
+            
+            viewResult.classList.remove('hidden');
+        }
+
+        function drawBox(ctx, x, y, w, h, color, lineWidth, text) {
+            ctx.strokeStyle = color; ctx.lineWidth = lineWidth; ctx.strokeRect(x, y, w, h);
+            const c = 15; ctx.lineWidth = lineWidth + 2; ctx.beginPath();
+            ctx.moveTo(x, y+c); ctx.lineTo(x, y); ctx.lineTo(x+c, y); ctx.moveTo(x+w-c, y); ctx.lineTo(x+w, y); ctx.lineTo(x+w, y+c);
+            ctx.moveTo(x+w, y+h-c); ctx.lineTo(x+w, y+h); ctx.lineTo(x+w-c, y+h); ctx.moveTo(x+c, y+h); ctx.lineTo(x, y+h); ctx.lineTo(x, y+h-c); ctx.stroke();
+            if (text) { ctx.fillStyle = color; ctx.font = "bold 12px monospace"; ctx.fillText(`> ${text}`, x, y - 8); }
+        }
+
+        function addThumbnail() {
+            const cvs = document.createElement('canvas'); cvs.width = 120; cvs.height = 90;
+            cvs.getContext('2d').drawImage(video, 0, 0, 120, 90);
+            const img = document.createElement('img'); img.src = cvs.toDataURL('image/jpeg');
+            img.className = "h-20 w-20 object-cover border border-blue-500/50 rounded-sm";
+            photoContainer.insertBefore(img, photoContainer.firstChild);
         }
 
         btnConfirm.addEventListener('click', () => {
-            topPanel.className = "h-[30%] bg-white flex flex-col relative z-20 shadow-lg transition-colors duration-500";
             viewResult.classList.add('hidden'); viewProcess.classList.remove('hidden');
-            bleBadge.className = "px-2 py-0.5 rounded text-[10px] font-bold border flex items-center gap-1 bg-white/90 text-blue-600 border-blue-200 transition-all";
-            bleBadge.innerHTML = '<span class="w-1.5 h-1.5 rounded-full bg-blue-500 animate-pulse"></span> BLE接続：確立済み';
-            mainStatus.innerText = "信号待機中"; mainStatus.className = "text-2xl font-black text-gray-800 tracking-tight";
-            btnTrigger.classList.remove('hidden');
-            video.classList.add('opacity-80');
-            photoContainer.classList.add('opacity-50');
-            photoContainer.innerHTML = '<div class="text-[9px] text-gray-500 font-bold w-full text-center mb-2">自動連写された画像がここに表示されます</div>';
-            currentBox = { ...centerBox, visible: true };
+            mainStatus.innerText = "WAITING"; mainStatus.className = "text-3xl font-black text-white italic";
+            btnTrigger.classList.remove('hidden'); photoContainer.innerHTML = '';
         });
 
         init();
