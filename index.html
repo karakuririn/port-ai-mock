@@ -49,7 +49,6 @@
         <video id="webcam" class="absolute inset-0 w-full h-full object-cover" autoplay playsinline muted></video>
         <canvas id="overlay" class="absolute inset-0 w-full h-full object-cover"></canvas>
         <div id="shutter-overlay" class="absolute inset-0 pointer-events-none"></div>
-        
         <div id="photo-container" class="absolute bottom-0 left-0 right-0 h-24 bg-gradient-to-t from-black/50 to-transparent p-4 flex gap-2 overflow-x-auto items-end"></div>
     </div>
 
@@ -73,6 +72,7 @@
         let isModeActive = false, isCapturing = false;
         let currentBox = { x: 0, y: 0, w: 200, h: 200 }; 
         let centerBox = { x: 0, y: 0, w: 200, h: 200 };
+        let lastScore = 0; // 最新の確信度を保持
 
         async function init() {
             try {
@@ -108,12 +108,6 @@
             overlay.width = video.videoWidth; overlay.height = video.videoHeight;
             const ctx = overlay.getContext('2d'); ctx.clearRect(0, 0, overlay.width, overlay.height);
 
-            if (isCapturing) {
-                drawBox(ctx, currentBox.x, currentBox.y, currentBox.w, currentBox.h, "#ef4444", 8, "撮影しています");
-                requestAnimationFrame(detectFrame);
-                return;
-            }
-
             const detections = objectDetector.detectForVideo(video, Date.now());
             const phoneDetection = detections.detections.find(d => TARGET_CLASSES.includes(d.categories[0].categoryName.toLowerCase()));
 
@@ -124,9 +118,18 @@
             if (phoneDetection) {
                 target = { x: phoneDetection.boundingBox.originX, y: phoneDetection.boundingBox.originY, w: phoneDetection.boundingBox.width, h: phoneDetection.boundingBox.height };
                 score = phoneDetection.categories[0].score;
+                lastScore = score;
                 hasTarget = true;
             }
 
+            if (isCapturing) {
+                // 撮影中：赤枠 ＋ 元のラベル（％表示）
+                drawBox(ctx, currentBox.x, currentBox.y, currentBox.w, currentBox.h, "#ef4444", 8, `SMARTPHONE ${Math.round(lastScore * 100)}%`);
+                requestAnimationFrame(detectFrame);
+                return;
+            }
+
+            // モーフィング（Lerp）
             currentBox.x += (target.x - currentBox.x) * LERP_FACTOR;
             currentBox.y += (target.y - currentBox.y) * LERP_FACTOR;
             currentBox.w += (target.w - currentBox.w) * LERP_FACTOR;
@@ -134,7 +137,7 @@
 
             const boxColor = hasTarget ? "#2563eb" : "rgba(37, 99, 235, 0.3)";
             const lineWidth = hasTarget ? 4 : 2;
-            const label = hasTarget ? "撮影しています" : null;
+            const label = hasTarget ? `SMARTPHONE ${Math.round(score * 100)}%` : null;
 
             drawBox(ctx, currentBox.x, currentBox.y, currentBox.w, currentBox.h, boxColor, lineWidth, label);
 
@@ -150,7 +153,7 @@
 
         async function startCaptureAndIdentify() {
             isCapturing = true;
-            mainStatus.innerText = "撮影しています";
+            mainStatus.innerText = "撮影しています"; // メインステータスのみ「撮影中」
             mainStatus.className = "text-3xl font-black text-slate-900 italic";
             
             const tempCanvas = document.createElement('canvas');
