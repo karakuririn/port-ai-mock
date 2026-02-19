@@ -3,30 +3,30 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-    <title>AI検査 最終復旧 v13.6</title>
-    <script src="https://unpkg.com/@mediapipe/tasks-vision@0.10.3/vision_bundle.js"></script>
+    <title>AI検査 最終解決 v13.7</title>
     <script src="https://cdn.tailwindcss.com"></script>
 </head>
 <body class="bg-slate-900 text-white font-mono text-[10px] p-4">
 
     <div id="diag-box" class="bg-black border border-blue-500 p-2 mb-4 h-48 overflow-y-auto">
-        <p class="text-blue-400 border-b border-blue-900 mb-1 font-bold">[V13.6 ULTIMATE DIAGNOSTIC]</p>
+        <p class="text-blue-400 border-b border-blue-900 mb-1 font-bold uppercase">[System v13.7 ESM Diagnostic]</p>
         <div id="log-content"></div>
     </div>
 
     <div class="space-y-4">
-        <button id="btn-trigger" class="w-full bg-slate-700 p-6 font-black rounded text-lg uppercase opacity-50 pointer-events-none">
-            Initializing System...
+        <button id="btn-trigger" class="w-full bg-slate-700 p-6 font-black rounded text-lg uppercase opacity-50 pointer-events-none transition-all">
+            Initializing Engine...
         </button>
     </div>
 
-    <div class="mt-4 relative bg-black aspect-video border border-white/10">
-        <video id="webcam" class="w-full h-full object-cover" autoplay playsinline muted></video>
+    <div class="mt-4 relative bg-black aspect-video border border-white/10 overflow-hidden">
+        <video id="webcam" class="w-full h-full object-cover opacity-60" autoplay playsinline muted></video>
+        <canvas id="overlay" class="absolute inset-0 w-full h-full"></canvas>
     </div>
 
-    <script>
+    <script type="module">
         const logArea = document.getElementById('log-content');
-        function addLog(msg, color = 'text-gray-300') {
+        function addLog(msg, color = 'text-gray-400') {
             const p = document.createElement('p');
             p.className = color;
             p.innerText = `> ${msg}`;
@@ -34,30 +34,25 @@
             logArea.scrollTop = logArea.scrollHeight;
         }
 
-        async function init() {
-            addLog("Step 1: Checking Namespace...");
-            
-            // 複数の可能性をチェック
-            const mp = window.mediapipe || (window.tasksVision ? {tasksVision: window.tasksVision} : null);
-            
-            if (!mp) {
-                addLog("ERROR: MediaPipe Namespace NOT FOUND.", "text-red-500");
-                addLog("Trying secondary load method...");
-                return;
-            }
-            
-            addLog("MediaPipe: DETECTED", "text-green-400");
+        // 重要：ライブラリを ESM 形式で直接インポート
+        import { ObjectDetector, FilesetResolver } from "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.3";
 
+        addLog("ES Module System: ACTIVE", "text-green-400");
+
+        let objectDetector;
+        const video = document.getElementById('webcam');
+        const overlay = document.getElementById('overlay');
+        const btnTrigger = document.getElementById('btn-trigger');
+
+        async function startSystem() {
             try {
-                const { ObjectDetector, FilesetResolver } = mp.tasksVision;
-                
-                addLog("Step 2: Loading WASM engine...");
+                addLog("Step 1: Loading WASM files...");
                 const vision = await FilesetResolver.forVisionTasks(
-                    "https://unpkg.com/@mediapipe/tasks-vision@0.10.3/wasm"
+                    "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.3/wasm"
                 );
-                
-                addLog("Step 3: Creating Detector...");
-                const objectDetector = await ObjectDetector.createFromOptions(vision, {
+
+                addLog("Step 2: Initializing Detector...");
+                objectDetector = await ObjectDetector.createFromOptions(vision, {
                     baseOptions: { 
                         modelAssetPath: "https://storage.googleapis.com/mediapipe-models/object_detector/efficientdet_lite0/float16/1/efficientdet_lite0.tflite",
                         delegate: "GPU" 
@@ -66,27 +61,27 @@
                     runningMode: "VIDEO"
                 });
 
-                addLog("Step 4: Starting Camera...");
-                const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" } });
-                document.getElementById('webcam').srcObject = stream;
+                addLog("Step 3: Accessing Camera...");
+                const stream = await navigator.mediaDevices.getUserMedia({ 
+                    video: { facingMode: "environment" } 
+                });
+                video.srcObject = stream;
                 
-                addLog("SUCCESS: SYSTEM ONLINE", "text-green-400");
-                const btn = document.getElementById('btn-trigger');
-                btn.innerText = "START INSPECTION";
-                btn.classList.replace('bg-slate-700', 'bg-blue-600');
-                btn.classList.remove('opacity-50', 'pointer-events-none');
+                video.onloadedmetadata = () => {
+                    addLog("SUCCESS: SYSTEM READY", "text-green-400");
+                    btnTrigger.innerText = "START INSPECTION";
+                    btnTrigger.classList.replace('bg-slate-700', 'bg-blue-600');
+                    btnTrigger.classList.remove('opacity-50', 'pointer-events-none');
+                };
 
             } catch (e) {
-                addLog(`CRITICAL: ${e.name}`, "text-red-500");
+                addLog(`CRITICAL ERROR: ${e.name}`, "text-red-500");
                 addLog(`DETAIL: ${e.message}`, "text-red-400");
             }
         }
 
-        // ページ読み込み完了後に実行
-        window.addEventListener('load', () => {
-            addLog("Page Loaded. Starting Init...");
-            init();
-        });
+        // 実行開始
+        startSystem();
     </script>
 </body>
 </html>
