@@ -11,7 +11,9 @@
         .flash-effect { animation: flash 0.1s ease-out; }
         @keyframes flash { from { background: white; opacity: 0.8; } to { background: transparent; opacity: 0; } }
         .camera-grid { background-image: radial-gradient(rgba(0, 0, 0, 0.05) 1px, transparent 1px); background-size: 30px 30px; }
-        .btn-glow { box-shadow: 0 0 20px rgba(37, 99, 235, 0.5); }
+        .btn-glow { box-shadow: 0 0 25px rgba(37, 99, 235, 0.6); }
+        .animate-fade-in { animation: fadeIn 0.4s ease-out; }
+        @keyframes fadeIn { from { opacity: 0; transform: scale(0.95); } to { opacity: 1; transform: scale(1); } }
     </style>
 </head>
 <body class="bg-white h-screen flex flex-col overflow-hidden font-sans select-none text-slate-800 transition-colors duration-300">
@@ -35,7 +37,7 @@
             <div class="flex flex-col items-center text-center text-white">
                 <span class="text-[10px] font-bold tracking-[0.5em] mb-1 opacity-80 uppercase italic">Analysis Result</span>
                 <div id="res-title" class="text-7xl font-black italic tracking-tighter leading-none mb-2">OK</div>
-                <div id="res-desc" class="text-sm font-bold mt-2 border-t border-white/20 pt-2 w-full uppercase leading-relaxed">状態正常</div>
+                <div id="res-desc" class="text-sm font-bold mt-2 border-t border-white/20 pt-2 w-full uppercase leading-relaxed">状態正常（判定率：--%）</div>
             </div>
             <button id="btn-reset" class="mt-8 bg-white/90 text-slate-900 font-black py-4 px-20 rounded-full shadow-2xl text-xs uppercase tracking-widest">
                 信号待機へ戻る
@@ -54,13 +56,11 @@
     <script type="module">
         import { ObjectDetector, FilesetResolver } from "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.3";
 
-        // 設定値
         const TM_MODEL_URL = "https://teachablemachine.withgoogle.com/models/zwVH7-aAn/"; 
         const TARGET_CLASSES = ["cell phone", "mobile phone"];
-        const LERP_FACTOR = 0.2; // モーフィングの滑らかさ
-        const CONFIDENCE_THRESHOLD = 0.8; // v14.7の判定ロジックを継承
+        const LERP_FACTOR = 0.2;
+        const CONFIDENCE_THRESHOLD = 0.8; 
 
-        // 要素取得
         const body = document.body, topPanel = document.getElementById('top-panel');
         const viewResult = document.getElementById('view-result'), viewProcess = document.getElementById('view-process');
         const mainStatus = document.getElementById('main-status'), subStatus = document.getElementById('sub-status');
@@ -71,7 +71,7 @@
 
         let objectDetector, identificationModel;
         let isModeActive = false, isCapturing = false;
-        let currentBox = { x: 0, y: 0, w: 200, h: 200 }; // 初期枠サイズ
+        let currentBox = { x: 0, y: 0, w: 200, h: 200 }; 
         let centerBox = { x: 0, y: 0, w: 200, h: 200 };
 
         async function init() {
@@ -86,7 +86,6 @@
                 const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" } });
                 video.srcObject = stream;
                 video.onloadedmetadata = () => {
-                    // 画面中央の位置を計算
                     centerBox.x = (video.videoWidth - 200) / 2;
                     centerBox.y = (video.videoHeight - 200) / 2;
                     currentBox = { ...centerBox };
@@ -96,13 +95,12 @@
             } catch (e) { mainStatus.innerText = "SYSTEM ERROR"; }
         }
 
-        // マキシブレーキON（スキャン開始トリガー）
         btnMaxiBrake.addEventListener('click', () => {
             isModeActive = true;
             btnMaxiBrake.classList.add('hidden');
-            mainStatus.innerText = "SCANNING";
-            mainStatus.className = "text-3xl font-black text-blue-600 italic animate-pulse";
-            subStatus.innerText = "ターゲットを捕捉してください";
+            mainStatus.innerText = "ターゲット検出待機中";
+            mainStatus.className = "text-2xl font-black text-blue-600 italic animate-pulse";
+            subStatus.innerText = "ターゲットを枠内に収めてください";
         });
 
         async function detectFrame() {
@@ -111,8 +109,7 @@
             const ctx = overlay.getContext('2d'); ctx.clearRect(0, 0, overlay.width, overlay.height);
 
             if (isCapturing) {
-                // 撮影中は枠を赤色で固定表示
-                drawBox(ctx, currentBox.x, currentBox.y, currentBox.w, currentBox.h, "#ef4444", 8, "IDENTIFYING...");
+                drawBox(ctx, currentBox.x, currentBox.y, currentBox.w, currentBox.h, "#ef4444", 8, "撮影しています");
                 requestAnimationFrame(detectFrame);
                 return;
             }
@@ -130,7 +127,6 @@
                 hasTarget = true;
             }
 
-            // モーフィング処理（Lerp）
             currentBox.x += (target.x - currentBox.x) * LERP_FACTOR;
             currentBox.y += (target.y - currentBox.y) * LERP_FACTOR;
             currentBox.w += (target.w - currentBox.w) * LERP_FACTOR;
@@ -138,25 +134,23 @@
 
             const boxColor = hasTarget ? "#2563eb" : "rgba(37, 99, 235, 0.3)";
             const lineWidth = hasTarget ? 4 : 2;
-            const label = hasTarget ? `LOCK ON: ${Math.round(score * 100)}%` : null;
+            const label = hasTarget ? "撮影しています" : null;
 
             drawBox(ctx, currentBox.x, currentBox.y, currentBox.w, currentBox.h, boxColor, lineWidth, label);
 
-            // トリガー判定：マキシブレーキON状態 ＆ ターゲット捕捉 ＆ 動きが安定
             if (isModeActive && hasTarget && score > 0.5) {
                 const diff = Math.abs(target.x - currentBox.x);
-                if (diff < 40) { // 枠が吸着した
+                if (diff < 40) { 
                     isModeActive = false;
                     startCaptureAndIdentify();
                 }
             }
-
             requestAnimationFrame(detectFrame);
         }
 
         async function startCaptureAndIdentify() {
             isCapturing = true;
-            mainStatus.innerText = "AUTHENTICATING";
+            mainStatus.innerText = "撮影しています";
             mainStatus.className = "text-3xl font-black text-slate-900 italic";
             
             const tempCanvas = document.createElement('canvas');
@@ -170,7 +164,6 @@
                 finalScore = Math.round(prediction[isOk ? 0 : 1].probability * 100);
             }
 
-            // 連写エフェクト
             for (let i = 0; i < 10; i++) {
                 shutterOverlay.classList.remove('flash-effect'); void shutterOverlay.offsetWidth;
                 shutterOverlay.classList.add('flash-effect');
@@ -188,12 +181,14 @@
             if (isOk) {
                 body.className = "bg-green-600 h-screen flex flex-col overflow-hidden transition-colors duration-300";
                 topPanel.className = "h-[30%] bg-green-600 flex flex-col relative z-20 border-none transition-colors duration-500";
-                resTitle.innerText = "PASSED"; resDesc.innerText = `検査適合: ${score}% 一致`;
+                resTitle.innerText = "OK"; 
+                resDesc.innerText = `状態正常（判定率：${score}%）`;
                 if(navigator.vibrate) navigator.vibrate([100, 50, 100]); 
             } else {
                 body.className = "bg-red-700 h-screen flex flex-col overflow-hidden transition-colors duration-300";
                 topPanel.className = "h-[30%] bg-red-700 flex flex-col relative z-20 border-none transition-colors duration-500";
-                resTitle.innerText = "FAILED"; resDesc.innerText = `不適合: 状態を再確認してください`;
+                resTitle.innerText = "NG"; 
+                resDesc.innerText = `状態異常：再確認してください（判定率：${score}%）`;
                 if(navigator.vibrate) navigator.vibrate([300, 100, 300]); 
             }
         }
@@ -206,10 +201,10 @@
             ctx.moveTo(x+w, y+h-c); ctx.lineTo(x+w, y+h); ctx.lineTo(x+w-c, y+h);
             ctx.moveTo(x+c, y+h); ctx.lineTo(x, y+h); ctx.lineTo(x, y+h-c); ctx.stroke();
             if (text) {
-                ctx.fillStyle = color; ctx.font = "bold 10px monospace";
+                ctx.fillStyle = color; ctx.font = "bold 11px monospace";
                 const txtW = ctx.measureText(text).width;
-                ctx.fillRect(x, y-15, txtW + 10, 15);
-                ctx.fillStyle = "white"; ctx.fillText(text, x + 5, y - 4);
+                ctx.fillRect(x, y-15, txtW + 12, 16);
+                ctx.fillStyle = "white"; ctx.fillText(text, x + 6, y - 4);
             }
         }
 
